@@ -1,0 +1,49 @@
+name: GitHub Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create GitHub release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const tag = context.ref.replace("refs/tags/", "");
+            const body = [
+              "## CareerOps Tracker MVP",
+              "",
+              "This release marks the first portfolio-ready MVP.",
+              "",
+              "### Highlights",
+              "",
+              "- Streamlit dashboard for job application tracking.",
+              "- SQLite persistence with CSV import/export.",
+              "- Rule-based recruiting email classification assistant.",
+              "- Follow-up and pending-action reminder engine.",
+              "- Demo data loader for quick project review.",
+              "- Pytest test suite with GitHub Actions CI.",
+              "- Architecture documentation for engineering review.",
+            ].join("\n");
+
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: tag,
+              name: `CareerOps Tracker ${tag}`,
+              body,
+              draft: false,
+              prerelease: false,
+            });
