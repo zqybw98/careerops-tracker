@@ -206,36 +206,41 @@ def render_applications(applications: list[dict]) -> None:
     selected_label = st.selectbox("Select application to edit", list(label_id_map.keys()))
     selected_id = label_id_map[selected_label]
     selected = next(item for item in applications if item["id"] == selected_id)
+    key_prefix = f"edit_{selected_id}"
 
     with st.form("edit_application_form"):
         col_a, col_b, col_c = st.columns(3)
-        company = col_a.text_input("Company", value=selected["company"], key="edit_company")
-        role = col_b.text_input("Role", value=selected["role"], key="edit_role")
-        location = col_c.text_input("Location", value=selected.get("location", ""), key="edit_location")
+        company = col_a.text_input("Company", value=selected["company"], key=f"{key_prefix}_company")
+        role = col_b.text_input("Role", value=selected["role"], key=f"{key_prefix}_role")
+        location = col_c.text_input("Location", value=selected.get("location", ""), key=f"{key_prefix}_location")
 
         col_d, col_e, col_f = st.columns(3)
         application_date = col_d.date_input(
             "Application date",
             value=_text_to_date(selected.get("application_date")) or date.today(),
-            key="edit_application_date",
+            key=f"{key_prefix}_application_date",
         )
         status_index = STATUS_OPTIONS.index(selected["status"]) if selected["status"] in STATUS_OPTIONS else 1
-        status = col_e.selectbox("Status", STATUS_OPTIONS, index=status_index, key="edit_status")
+        status = col_e.selectbox("Status", STATUS_OPTIONS, index=status_index, key=f"{key_prefix}_status")
         follow_up_value = col_f.date_input(
             "Follow-up date",
             value=_text_to_date(selected.get("follow_up_date")) or date.today() + timedelta(days=7),
-            key="edit_follow_up_date",
+            key=f"{key_prefix}_follow_up_date",
         )
         keep_follow_up = col_f.checkbox(
             "Keep follow-up date",
             value=bool(selected.get("follow_up_date")),
-            key="edit_keep_follow_up",
+            key=f"{key_prefix}_keep_follow_up",
         )
 
-        source_link = st.text_input("Source link", value=selected.get("source_link", ""), key="edit_source")
-        contact = st.text_input("Contact", value=selected.get("contact", ""), key="edit_contact")
-        next_action = st.text_input("Next action", value=selected.get("next_action", ""), key="edit_next_action")
-        notes = st.text_area("Notes", value=selected.get("notes", ""), key="edit_notes")
+        source_link = st.text_input("Source link", value=selected.get("source_link", ""), key=f"{key_prefix}_source")
+        contact = st.text_input("Contact", value=selected.get("contact", ""), key=f"{key_prefix}_contact")
+        next_action = st.text_input(
+            "Next action",
+            value=selected.get("next_action", ""),
+            key=f"{key_prefix}_next_action",
+        )
+        notes = st.text_area("Notes", value=selected.get("notes", ""), key=f"{key_prefix}_notes")
 
         col_save, col_delete = st.columns(2)
         save_clicked = col_save.form_submit_button("Save changes")
