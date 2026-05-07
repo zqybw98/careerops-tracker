@@ -39,6 +39,7 @@ flowchart LR
 | Component | Responsibility |
 | --- | --- |
 | `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. |
+| `src/analytics.py` | Builds decision-oriented metrics such as response rates, conversion, waiting days, weekly volume, and stale pipeline breakdowns. |
 | `src/database.py` | SQLite connection management, schema creation, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |
 | `src/csv_importer.py` | Normalizes English and Chinese CSV headers, dates, and statuses before import. |
 | `src/models.py` | Shared status options, application columns, and classification result shape. |
@@ -163,6 +164,23 @@ The reminder engine converts structured application data into pending actions:
 
 This keeps the automation simple and deterministic while still providing
 practical value for job search operations.
+
+## Decision Analytics
+
+The dashboard includes a decision-oriented analytics layer rather than only raw
+record counts. `src/analytics.py` derives:
+
+- response rate by inferred source, such as LinkedIn, StepStone, or career page
+- interview/assessment conversion rate by inferred role type
+- average active waiting days by company
+- applications per calendar week
+- stale pipeline breakdown for open applications
+- saved-only versus submitted application volume
+
+Sources and role types are inferred from lightweight rules so the analytics stay
+transparent and testable. These metrics help answer operational questions such
+as which channels are responding, where the pipeline is stale, and which role
+types are converting into interviews or assessments.
 
 ## Import, Export, and Demo Data
 

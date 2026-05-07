@@ -23,6 +23,7 @@ After deploying, add the generated `https://...streamlit.app` URL here so recrui
 - Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails.
 - Keep an activity log for application creation, updates, imports, email-assistant actions, and cleanup.
 - View a Streamlit dashboard with application metrics and status charts.
+- Analyze response rate by source, weekly application volume, role-type conversion, waiting days, and stale pipeline risk.
 - Load demo applications to preview the dashboard immediately after setup.
 - Import and export applications with CSV, including common English and Chinese headers.
 - Re-import updated CSV files without creating duplicate application records.
@@ -75,6 +76,7 @@ After deploying, add the generated `https://...streamlit.app` URL here so recrui
 |       |-- tests.yml
 |       `-- release.yml
 |-- src/
+|   |-- analytics.py
 |   |-- database.py
 |   |-- csv_importer.py
 |   |-- dashboard.py
@@ -85,6 +87,7 @@ After deploying, add the generated `https://...streamlit.app` URL here so recrui
 |   |-- models.py
 |   `-- reminder_engine.py
 |-- tests/
+|   |-- test_analytics.py
 |   |-- test_application_service.py
 |   |-- test_csv_importer.py
 |   |-- test_demo_data.py
@@ -166,7 +169,7 @@ Full deployment steps are in [`docs/deployment.md`](docs/deployment.md).
 3. Review the detected category, confidence score, extracted application context, and suggested status.
 4. Apply the suggested update to a matched application or create a new application from the email.
 5. Generate a follow-up, thank-you, outreach, or acknowledgement email from the Templates tab.
-6. Use the dashboard to monitor waiting applications and follow-up tasks.
+6. Use the dashboard to monitor waiting applications, follow-up tasks, response rates, role conversion, and stale records.
 
 For a quick demo, open the Data tab and click `Load sample applications`.
 
@@ -187,7 +190,7 @@ updates the existing record instead of adding a duplicate.
 
 ## Why This Project
 
-This project demonstrates practical automation, structured information management, and workflow tooling. It is intentionally small enough to complete in one to two weeks while still showing real business value for QA, automation, technical operations, and tooling roles.
+This project demonstrates practical automation, structured information management, workflow analytics, and tooling. It is intentionally small enough to complete in one to two weeks while still showing real business value for QA, automation, technical operations, and tooling roles.
 
 ## Future Improvements
 

@@ -5,6 +5,15 @@ from datetime import date, timedelta
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from src.analytics import (
+    build_applications_per_week,
+    build_average_waiting_days_by_company,
+    build_interview_conversion_by_role_type,
+    build_pipeline_health,
+    build_response_rate_by_source,
+    build_saved_vs_applied_summary,
+    build_stale_pipeline_breakdown,
+)
 from src.csv_importer import normalize_import_rows
 from src.dashboard import build_summary
 from src.database import (
@@ -61,6 +70,7 @@ def main() -> None:
 
 def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
     summary = build_summary(applications)
+    pipeline_health = build_pipeline_health(applications)
 
     metric_columns = st.columns(6)
     metric_columns[0].metric("Total", summary["total"])
@@ -105,6 +115,108 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
                         f"Due: `{reminder['due_date']}`"
                     )
                     st.divider()
+
+    st.subheader("Decision Analytics")
+    health_columns = st.columns(4)
+    health_columns[0].metric("Response rate", _format_rate(pipeline_health["response_rate"]))
+    health_columns[1].metric("Interview conversion", _format_rate(pipeline_health["interview_conversion_rate"]))
+    health_columns[2].metric("Avg active waiting", f"{pipeline_health['average_active_waiting_days']} days")
+    health_columns[3].metric("Stale open", pipeline_health["stale_open_applications"])
+
+    activity_col, source_col = st.columns(2)
+    with activity_col:
+        weekly_df = pd.DataFrame(build_applications_per_week(applications))
+        if weekly_df.empty:
+            st.info("Add application dates to see weekly application volume.")
+        else:
+            weekly_fig = px.bar(
+                weekly_df,
+                x="week",
+                y="applications",
+                title="Applications per Week",
+            )
+            weekly_fig.update_layout(xaxis_title="", yaxis_title="Applications")
+            st.plotly_chart(weekly_fig, use_container_width=True)
+
+    with source_col:
+        source_df = _with_rate_percent(pd.DataFrame(build_response_rate_by_source(applications)), "response_rate")
+        if source_df.empty:
+            st.info("Add source links to compare response rates by channel.")
+        else:
+            source_fig = px.bar(
+                source_df,
+                x="source",
+                y="response_rate_percent",
+                color="source",
+                title="Response Rate by Source",
+                hover_data=["applications", "responses"],
+            )
+            source_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Response rate (%)")
+            st.plotly_chart(source_fig, use_container_width=True)
+
+    conversion_col, aging_col = st.columns(2)
+    with conversion_col:
+        conversion_df = _with_rate_percent(
+            pd.DataFrame(build_interview_conversion_by_role_type(applications)),
+            "conversion_rate",
+        )
+        if conversion_df.empty:
+            st.info("Add roles to compare conversion by role type.")
+        else:
+            conversion_fig = px.bar(
+                conversion_df,
+                x="role_type",
+                y="conversion_rate_percent",
+                color="role_type",
+                title="Interview Conversion by Role Type",
+                hover_data=["applications", "interview_or_assessment"],
+            )
+            conversion_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Conversion rate (%)")
+            st.plotly_chart(conversion_fig, use_container_width=True)
+
+    with aging_col:
+        waiting_df = pd.DataFrame(build_average_waiting_days_by_company(applications))
+        if waiting_df.empty:
+            st.info("Open applications with dates will show company waiting time.")
+        else:
+            waiting_fig = px.bar(
+                waiting_df,
+                x="average_waiting_days",
+                y="company",
+                orientation="h",
+                title="Average Waiting Days by Company",
+                hover_data=["open_applications"],
+            )
+            waiting_fig.update_layout(xaxis_title="Days", yaxis_title="")
+            st.plotly_chart(waiting_fig, use_container_width=True)
+
+    stale_col, saved_col = st.columns(2)
+    with stale_col:
+        stale_df = pd.DataFrame(build_stale_pipeline_breakdown(applications))
+        if stale_df.empty:
+            st.info("No open applications to age yet.")
+        else:
+            stale_fig = px.bar(
+                stale_df,
+                x="bucket",
+                y="applications",
+                color="status",
+                title="Stale Pipeline Breakdown",
+            )
+            stale_fig.update_layout(xaxis_title="", yaxis_title="Open applications")
+            st.plotly_chart(stale_fig, use_container_width=True)
+
+    with saved_col:
+        saved_df = pd.DataFrame(build_saved_vs_applied_summary(applications))
+        saved_fig = px.bar(
+            saved_df,
+            x="stage",
+            y="applications",
+            color="stage",
+            title="Saved vs Submitted",
+        )
+        saved_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Applications")
+        st.plotly_chart(saved_fig, use_container_width=True)
 
     st.subheader("Recent Applications")
     display_df = _with_display_sequence(df)
@@ -629,6 +741,18 @@ def _with_display_sequence(df: pd.DataFrame) -> pd.DataFrame:
     ).reset_index(drop=True)
     sorted_df.insert(0, "#", range(1, len(sorted_df) + 1))
     return sorted_df
+
+
+def _with_rate_percent(df: pd.DataFrame, rate_column: str) -> pd.DataFrame:
+    if df.empty:
+        return df
+    formatted = df.copy()
+    formatted[f"{rate_column}_percent"] = (formatted[rate_column] * 100).round(1)
+    return formatted
+
+
+def _format_rate(value: object) -> str:
+    return f"{float(value) * 100:.0f}%"
 
 
 def _date_to_text(value: object) -> str:
