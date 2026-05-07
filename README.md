@@ -15,6 +15,7 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 - View a Streamlit dashboard with application metrics and status charts.
 - Load demo applications to preview the dashboard immediately after setup.
 - Import and export applications with CSV, including common English and Chinese headers.
+- Re-import updated CSV files without creating duplicate application records.
 - Keep Gmail API integration optional for future expansion.
 
 ## Screenshots
@@ -115,6 +116,8 @@ For a quick demo, open the Data tab and click `Load sample applications`.
 
 The CSV importer supports the default English columns and common Chinese headers
 such as `公司名称`, `职位名称`, `申请日期`, `最新状态`, and `备注/来源`.
+When the same company, role, and application date already exist, CSV import
+updates the existing record instead of adding a duplicate.
 
 ## Email Categories
 

@@ -8,11 +8,12 @@ import streamlit as st
 
 from src.dashboard import build_summary
 from src.database import (
-    bulk_create_applications,
     create_application,
+    deduplicate_applications,
     delete_application,
     get_applications,
     init_db,
+    sync_applications,
     update_application,
 )
 from src.csv_importer import normalize_import_rows
@@ -99,10 +100,11 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
                 )
 
     st.subheader("Recent Applications")
+    display_df = _with_display_sequence(df)
     st.dataframe(
-        df[
+        display_df[
             [
-                "id",
+                "#",
                 "company",
                 "role",
                 "location",
@@ -165,10 +167,26 @@ def render_applications(applications: list[dict]) -> None:
         st.info("No applications yet.")
         return
 
-    df = pd.DataFrame(applications)
+    df = _with_display_sequence(pd.DataFrame(applications))
     selected_statuses = st.multiselect("Filter by status", STATUS_OPTIONS, default=STATUS_OPTIONS)
     filtered = df[df["status"].isin(selected_statuses)]
-    st.dataframe(filtered, use_container_width=True, hide_index=True)
+    st.dataframe(
+        filtered[
+            [
+                "#",
+                "company",
+                "role",
+                "location",
+                "application_date",
+                "status",
+                "next_action",
+                "follow_up_date",
+                "updated_at",
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
 
     selected_label = st.selectbox(
         "Select application to edit",
@@ -304,6 +322,17 @@ def render_data_tools(applications: list[dict]) -> None:
             st.info("Sample applications are already loaded.")
         st.rerun()
 
+    if applications:
+        with st.expander("Maintenance"):
+            st.caption("Use this after repeated CSV imports to remove duplicate company/role/date records.")
+            if st.button("Clean duplicate applications"):
+                removed = deduplicate_applications()
+                if removed:
+                    st.success(f"Removed {removed} duplicate records.")
+                else:
+                    st.info("No duplicate records found.")
+                st.rerun()
+
     uploaded_file = st.file_uploader("Import applications from CSV", type=["csv"])
     if uploaded_file is not None:
         uploaded_df = pd.read_csv(uploaded_file, dtype=str).fillna("")
@@ -325,15 +354,19 @@ def render_data_tools(applications: list[dict]) -> None:
             )
 
         if import_result.rows and st.button("Import CSV"):
-            created = bulk_create_applications(import_result.rows)
-            st.success(f"Imported {created} applications.")
+            result = sync_applications(import_result.rows)
+            st.success(
+                f"Import complete: {result['created']} created, "
+                f"{result['updated']} updated, {result['skipped']} unchanged."
+            )
             st.rerun()
 
     if applications:
-        export_df = pd.DataFrame(applications)
+        export_df = _with_display_sequence(pd.DataFrame(applications))
+        export_columns = ["#"] + APPLICATION_COLUMNS + ["created_at", "updated_at"]
         st.download_button(
             "Download applications CSV",
-            export_df.to_csv(index=False).encode("utf-8"),
+            export_df[export_columns].to_csv(index=False).encode("utf-8"),
             file_name="careerops_applications.csv",
             mime="text/csv",
         )
@@ -345,6 +378,19 @@ def render_data_tools(applications: list[dict]) -> None:
 
 def format_application_label(application: dict) -> str:
     return f"{application['id']} - {application['company']} - {application['role']}"
+
+
+def _with_display_sequence(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+
+    sorted_df = df.sort_values(
+        by=["application_date", "company", "role", "id"],
+        ascending=[False, True, True, False],
+        na_position="last",
+    ).reset_index(drop=True)
+    sorted_df.insert(0, "#", range(1, len(sorted_df) + 1))
+    return sorted_df
 
 
 def _date_to_text(value: object) -> str:

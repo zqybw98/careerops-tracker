@@ -39,7 +39,7 @@ flowchart LR
 | Component | Responsibility |
 | --- | --- |
 | `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. |
-| `src/database.py` | SQLite connection management, schema creation, CRUD operations, CSV bulk insert support. |
+| `src/database.py` | SQLite connection management, schema creation, CRUD, CSV sync imports, and duplicate cleanup. |
 | `src/csv_importer.py` | Normalizes English and Chinese CSV headers, dates, and statuses before import. |
 | `src/models.py` | Shared status options, application columns, and classification result shape. |
 | `src/dashboard.py` | Aggregates applications into total, weekly, waiting, interview, assessment, and rejection metrics. |
@@ -133,6 +133,12 @@ schema.
 The Data tab also includes `Load sample applications`, which imports demo rows
 from `samples/sample_applications.csv`. The loader checks company, role, and
 application date to avoid creating duplicates when clicked multiple times.
+
+CSV imports use a sync strategy instead of append-only inserts. If an imported
+row matches an existing record by normalized company, role, and application
+date, the app updates the existing record and merges notes. Otherwise it creates
+a new record. A maintenance action can remove duplicate records that were
+created by older append-only imports.
 
 ## Testing Strategy
 
