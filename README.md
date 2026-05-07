@@ -1,5 +1,7 @@
 # CareerOps Tracker
 
+[![Python Tests](https://github.com/zqybw98/careerops-tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/zqybw98/careerops-tracker/actions/workflows/tests.yml)
+
 A lightweight job application tracker and email classification assistant built with Python, Streamlit, and SQLite.
 
 CareerOps Tracker helps job seekers structure applications, classify recruiting emails, and generate follow-up reminders from simple automation rules.
