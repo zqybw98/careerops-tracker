@@ -21,6 +21,7 @@ from src.csv_importer import normalize_import_rows
 from src.demo_data import seed_sample_applications
 from src.email_classifier import classify_email
 from src.email_parser import extract_application_details, match_application_from_email
+from src.email_templates import TEMPLATE_TYPES, generate_email_template, suggest_template_type
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
 from src.reminder_engine import generate_reminders
 
@@ -40,8 +41,8 @@ def main() -> None:
     applications = get_applications()
     reminders = generate_reminders(applications)
 
-    dashboard_tab, applications_tab, email_tab, data_tab = st.tabs(
-        ["Dashboard", "Applications", "Email Assistant", "Data"]
+    dashboard_tab, applications_tab, email_tab, templates_tab, data_tab = st.tabs(
+        ["Dashboard", "Applications", "Email Assistant", "Templates", "Data"]
     )
 
     with dashboard_tab:
@@ -52,6 +53,9 @@ def main() -> None:
 
     with email_tab:
         render_email_assistant(applications)
+
+    with templates_tab:
+        render_email_templates(applications)
 
     with data_tab:
         render_data_tools(applications)
@@ -426,6 +430,50 @@ def render_email_assistant(applications: list[dict]) -> None:
                 st.rerun()
 
 
+def render_email_templates(applications: list[dict]) -> None:
+    st.subheader("Generate Career Email Template")
+    if not applications:
+        st.info("Add or import an application first to generate a personalized template.")
+        return
+
+    label_id_map = _application_label_id_map(applications)
+    selected_label = st.selectbox("Application", list(label_id_map.keys()), key="template_application_select")
+    selected_id = label_id_map[selected_label]
+    selected = next(item for item in applications if item["id"] == selected_id)
+
+    suggested_type = suggest_template_type(selected)
+    suggested_index = TEMPLATE_TYPES.index(suggested_type)
+
+    col_type, col_recipient, col_sender = st.columns(3)
+    template_type = col_type.selectbox(
+        "Template type",
+        TEMPLATE_TYPES,
+        index=suggested_index,
+        key=f"template_type_{selected_id}",
+    )
+    recipient_name = col_recipient.text_input(
+        "Recipient name",
+        value=_recipient_name_from_contact(selected.get("contact", "")),
+        key=f"template_recipient_{selected_id}",
+    )
+    sender_name = col_sender.text_input("Sender name", value="Yibo Zhang", key="template_sender")
+
+    generated = generate_email_template(
+        selected,
+        template_type=template_type,
+        recipient_name=recipient_name,
+        sender_name=sender_name,
+    )
+
+    st.text_input("Subject", value=generated["subject"], key=f"template_subject_{selected_id}_{template_type}")
+    st.text_area(
+        "Email body",
+        value=generated["body"],
+        height=320,
+        key=f"template_body_{selected_id}_{template_type}",
+    )
+
+
 def render_data_tools(applications: list[dict]) -> None:
     st.subheader("Import / Export")
 
@@ -559,6 +607,17 @@ def _append_note(existing_notes: str, new_note: str) -> str:
     if new_note in existing_notes:
         return existing_notes
     return f"{existing_notes}\n{new_note}"
+
+
+def _recipient_name_from_contact(contact: object) -> str:
+    text = str(contact or "").strip()
+    if not text:
+        return ""
+    if "<" in text:
+        return text.split("<", 1)[0].strip()
+    if "@" in text:
+        return ""
+    return text
 
 
 def _with_display_sequence(df: pd.DataFrame) -> pd.DataFrame:

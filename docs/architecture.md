@@ -45,6 +45,7 @@ flowchart LR
 | `src/dashboard.py` | Aggregates applications into total, weekly, waiting, interview, assessment, and rejection metrics. |
 | `src/email_classifier.py` | Rule-based recruiting email classification with confidence scores and suggested next actions. |
 | `src/email_parser.py` | Extracts company, role, contact, and source-link hints from pasted email text and matches existing records. |
+| `src/email_templates.py` | Generates rule-based follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails. |
 | `src/reminder_engine.py` | Generates follow-up, interview, assessment, stale-application, and saved-role reminders. |
 | `src/demo_data.py` | Loads portfolio-friendly sample data from `samples/sample_applications.csv` without duplicates. |
 | `tests/` | Regression tests for persistence, email rules, reminder rules, and demo data loading. |
@@ -135,6 +136,14 @@ When a confident match is found, the matched application is pre-selected for
 the user. If no match exists, the same extracted context can prefill a new
 application record.
 
+## Email Template Generation
+
+The Templates tab generates editable, rule-based career email drafts from an
+existing application record. Template selection can be suggested from application
+status, for example rejected applications default toward acknowledgement emails
+and interview records default toward thank-you emails. This keeps the workflow
+lightweight while connecting reminders, statuses, and recruiting communication.
+
 ## Reminder Rules
 
 The reminder engine converts structured application data into pending actions:
@@ -175,6 +184,7 @@ The project uses pytest for fast regression tests:
 
 - database tests verify application creation, updates, sync imports, duplicate cleanup, and activity events
 - email classifier tests verify core recruiting email categories
+- email template tests verify suggested template types and generated draft content
 - reminder tests verify follow-up, interview, assessment, and closed-status logic
 - demo data tests verify sample CSV loading and idempotent import behavior
 

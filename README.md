@@ -14,6 +14,7 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 - Suggest application status updates from email classification results.
 - Match recruiting emails to existing applications or create a new application from email context.
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
+- Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails.
 - Keep an activity log for application creation, updates, imports, email-assistant actions, and cleanup.
 - View a Streamlit dashboard with application metrics and status charts.
 - Load demo applications to preview the dashboard immediately after setup.
@@ -61,6 +62,7 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 |   |-- demo_data.py
 |   |-- email_classifier.py
 |   |-- email_parser.py
+|   |-- email_templates.py
 |   |-- models.py
 |   `-- reminder_engine.py
 |-- tests/
@@ -69,6 +71,7 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 |   |-- test_demo_data.py
 |   |-- test_email_classifier.py
 |   |-- test_email_parser.py
+|   |-- test_email_templates.py
 |   `-- test_reminder_engine.py
 |-- samples/
 |   |-- sample_applications.csv
@@ -115,7 +118,8 @@ pytest
 2. Paste a recruiting email into the Email Assistant.
 3. Review the detected category, confidence score, extracted application context, and suggested status.
 4. Apply the suggested update to a matched application or create a new application from the email.
-5. Use the dashboard to monitor waiting applications and follow-up tasks.
+5. Generate a follow-up, thank-you, outreach, or acknowledgement email from the Templates tab.
+6. Use the dashboard to monitor waiting applications and follow-up tasks.
 
 For a quick demo, open the Data tab and click `Load sample applications`.
 
