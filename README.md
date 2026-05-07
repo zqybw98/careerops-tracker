@@ -6,6 +6,12 @@ A lightweight job application tracker and email classification assistant built w
 
 CareerOps Tracker helps job seekers structure applications, classify recruiting emails, and generate follow-up reminders from simple automation rules.
 
+## Live Demo
+
+This project is prepared for Streamlit Community Cloud deployment.
+
+After deploying, add the generated `https://...streamlit.app` URL here so recruiters can open the app directly.
+
 ## Features
 
 - Track companies, roles, locations, application dates, links, contacts, notes, and status.
@@ -62,6 +68,8 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 |-- requirements-dev.txt
 |-- pyproject.toml
 |-- .pre-commit-config.yaml
+|-- .streamlit/
+|   `-- config.toml
 |-- .github/
 |   `-- workflows/
 |       |-- tests.yml
@@ -88,7 +96,8 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 |   |-- sample_applications.csv
 |   `-- sample_emails.txt
 `-- docs/
-    `-- architecture.md
+    |-- architecture.md
+    `-- deployment.md
 ```
 
 ## Getting Started
@@ -138,6 +147,17 @@ python -m ruff format --check .
 python -m mypy src
 python -m pytest
 ```
+
+## Deployment
+
+The app is ready for Streamlit Community Cloud.
+
+- Repository: `zqybw98/careerops-tracker`
+- Branch: `main`
+- Main file path: `app.py`
+- Python version: `3.13`
+
+Full deployment steps are in [`docs/deployment.md`](docs/deployment.md).
 
 ## Example Workflow
 

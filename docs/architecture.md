@@ -51,7 +51,9 @@ flowchart LR
 | `tests/` | Regression tests for persistence, email rules, reminder rules, and demo data loading. |
 | `pyproject.toml` | Central configuration for Ruff linting, Ruff formatting, and mypy type checking. |
 | `.pre-commit-config.yaml` | Local hooks for lint auto-fix, formatting, and type checks before commits. |
+| `.streamlit/config.toml` | Streamlit theme configuration used locally and in the hosted demo. |
 | `.github/workflows/tests.yml` | Runs lint, format, type checks, and pytest on push and pull requests. |
+| `docs/deployment.md` | Deployment checklist for publishing the app on Streamlit Community Cloud. |
 
 ## Data Model
 
@@ -213,6 +215,20 @@ Gmail API -> email fetcher -> existing classifier -> suggested application updat
 The core app should continue to work with pasted email text even when Gmail
 credentials are not configured. This keeps setup simple for reviewers and avoids
 making personal mailbox access a requirement.
+
+## Deployment Model
+
+The hosted demo target is Streamlit Community Cloud. The repository is organized
+so the platform can run the app directly from the root:
+
+- entry point: `app.py`
+- dependency file: `requirements.txt`
+- visual configuration: `.streamlit/config.toml`
+- recommended Python version: `3.13`
+
+The deployed SQLite database is suitable for demo usage. Long-term production
+usage would require a persistent hosted database, but that is intentionally out
+of scope for this portfolio MVP.
 
 ## Design Decisions
 
