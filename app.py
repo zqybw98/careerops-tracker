@@ -91,13 +91,16 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
         if not reminders:
             st.success("No reminders due right now.")
         else:
-            for reminder in reminders[:8]:
-                st.markdown(
-                    f"**{reminder['priority']}** - {reminder['company']} / "
-                    f"{reminder['role']}  \n"
-                    f"{reminder['message']}  \n"
-                    f"Due: `{reminder['due_date']}`"
-                )
+            st.caption(f"{len(reminders)} pending action(s)")
+            with st.container(height=520):
+                for reminder in reminders:
+                    st.markdown(
+                        f"**{reminder['priority']}** - {reminder['company']} / "
+                        f"{reminder['role']}  \n"
+                        f"{reminder['message']}  \n"
+                        f"Due: `{reminder['due_date']}`"
+                    )
+                    st.divider()
 
     st.subheader("Recent Applications")
     display_df = _with_display_sequence(df)
