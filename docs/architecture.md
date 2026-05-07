@@ -40,6 +40,7 @@ flowchart LR
 | --- | --- |
 | `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. |
 | `src/database.py` | SQLite connection management, schema creation, CRUD operations, CSV bulk insert support. |
+| `src/csv_importer.py` | Normalizes English and Chinese CSV headers, dates, and statuses before import. |
 | `src/models.py` | Shared status options, application columns, and classification result shape. |
 | `src/dashboard.py` | Aggregates applications into total, weekly, waiting, interview, assessment, and rejection metrics. |
 | `src/email_classifier.py` | Rule-based recruiting email classification with confidence scores and suggested next actions. |
@@ -124,7 +125,10 @@ practical value for job search operations.
 ## Import, Export, and Demo Data
 
 CSV import/export makes the tool portable and easy to review. The expected CSV
-columns are defined in `src/models.py` as `APPLICATION_COLUMNS`.
+columns are defined in `src/models.py` as `APPLICATION_COLUMNS`. The importer
+also supports common Chinese headers such as `公司名称`, `职位名称`, `申请日期`,
+`最新状态`, and `备注/来源`, then normalizes them into the internal application
+schema.
 
 The Data tab also includes `Load sample applications`, which imports demo rows
 from `samples/sample_applications.csv`. The loader checks company, role, and

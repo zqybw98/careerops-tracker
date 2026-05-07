@@ -14,7 +14,7 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
 - View a Streamlit dashboard with application metrics and status charts.
 - Load demo applications to preview the dashboard immediately after setup.
-- Import and export applications with CSV.
+- Import and export applications with CSV, including common English and Chinese headers.
 - Keep Gmail API integration optional for future expansion.
 
 ## Screenshots
@@ -52,6 +52,7 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 |-- requirements.txt
 |-- src/
 |   |-- database.py
+|   |-- csv_importer.py
 |   |-- dashboard.py
 |   |-- demo_data.py
 |   |-- email_classifier.py
@@ -59,6 +60,7 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 |   `-- reminder_engine.py
 |-- tests/
 |   |-- test_application_service.py
+|   |-- test_csv_importer.py
 |   |-- test_demo_data.py
 |   |-- test_email_classifier.py
 |   `-- test_reminder_engine.py
@@ -110,6 +112,9 @@ pytest
 5. Use the dashboard to monitor waiting applications and follow-up tasks.
 
 For a quick demo, open the Data tab and click `Load sample applications`.
+
+The CSV importer supports the default English columns and common Chinese headers
+such as `公司名称`, `职位名称`, `申请日期`, `最新状态`, and `备注/来源`.
 
 ## Email Categories
 

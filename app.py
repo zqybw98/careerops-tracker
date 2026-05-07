@@ -15,6 +15,7 @@ from src.database import (
     init_db,
     update_application,
 )
+from src.csv_importer import normalize_import_rows
 from src.demo_data import seed_sample_applications
 from src.email_classifier import classify_email
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
@@ -305,13 +306,26 @@ def render_data_tools(applications: list[dict]) -> None:
 
     uploaded_file = st.file_uploader("Import applications from CSV", type=["csv"])
     if uploaded_file is not None:
-        uploaded_df = pd.read_csv(uploaded_file).fillna("")
-        missing_columns = {"company", "role"} - set(uploaded_df.columns)
-        if missing_columns:
-            st.error("CSV must contain at least company and role columns.")
-        elif st.button("Import CSV"):
-            rows = uploaded_df.to_dict(orient="records")
-            created = bulk_create_applications(rows)
+        uploaded_df = pd.read_csv(uploaded_file, dtype=str).fillna("")
+        import_result = normalize_import_rows(uploaded_df.to_dict(orient="records"))
+
+        if not import_result.rows:
+            st.error("No valid application rows found in this CSV.")
+            st.caption("Detected columns: " + ", ".join(import_result.source_columns))
+        else:
+            st.success(f"Detected {len(import_result.rows)} application rows ready to import.")
+            if import_result.skipped_count:
+                st.caption(f"Skipped {import_result.skipped_count} blank, duplicate, or header-like rows.")
+
+            preview_df = pd.DataFrame(import_result.rows)
+            st.dataframe(
+                preview_df[["company", "role", "application_date", "status", "next_action"]].head(10),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        if import_result.rows and st.button("Import CSV"):
+            created = bulk_create_applications(import_result.rows)
             st.success(f"Imported {created} applications.")
             st.rerun()
 
@@ -326,6 +340,7 @@ def render_data_tools(applications: list[dict]) -> None:
 
     st.subheader("Expected CSV Columns")
     st.code(", ".join(APPLICATION_COLUMNS), language="text")
+    st.caption("English and common Chinese headers are supported, for example 公司名称, 职位名称, 申请日期, 最新状态, 备注/来源.")
 
 
 def format_application_label(application: dict) -> str:
