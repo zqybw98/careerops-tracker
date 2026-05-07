@@ -44,6 +44,7 @@ flowchart LR
 | `src/models.py` | Shared status options, application columns, and classification result shape. |
 | `src/dashboard.py` | Aggregates applications into total, weekly, waiting, interview, assessment, and rejection metrics. |
 | `src/email_classifier.py` | Rule-based recruiting email classification with confidence scores and suggested next actions. |
+| `src/email_parser.py` | Extracts company, role, contact, and source-link hints from pasted email text and matches existing records. |
 | `src/reminder_engine.py` | Generates follow-up, interview, assessment, stale-application, and saved-role reminders. |
 | `src/demo_data.py` | Loads portfolio-friendly sample data from `samples/sample_applications.csv` without duplicates. |
 | `tests/` | Regression tests for persistence, email rules, reminder rules, and demo data loading. |
@@ -105,6 +106,13 @@ Each rule contains:
 When an email is classified, the app returns the category, confidence score,
 matched keywords, suggested status, and suggested next action. If no rule
 matches, the email is classified as `Other` and routed to manual review.
+
+The email assistant also extracts lightweight application context from pasted
+email content. It looks for company names, role titles, sender/contact details,
+and source links, then compares those hints against existing application records.
+When a confident match is found, the matched application is pre-selected for
+the user. If no match exists, the same extracted context can prefill a new
+application record.
 
 ## Reminder Rules
 

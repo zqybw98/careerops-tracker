@@ -19,6 +19,7 @@ from src.database import (
 from src.csv_importer import normalize_import_rows
 from src.demo_data import seed_sample_applications
 from src.email_classifier import classify_email
+from src.email_parser import extract_application_details, match_application_from_email
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
 from src.reminder_engine import generate_reminders
 
@@ -272,12 +273,24 @@ def render_email_assistant(applications: list[dict]) -> None:
 
     if st.button("Classify email"):
         result = classify_email(subject=subject, body=body)
+        details = extract_application_details(subject=subject, body=body)
+        match = match_application_from_email(
+            applications,
+            subject=subject,
+            body=body,
+            extracted_details=details,
+        )
         st.session_state["last_classification"] = result
+        st.session_state["last_email_details"] = details
+        st.session_state["last_application_match"] = match
 
     result = st.session_state.get("last_classification")
     if not result:
         st.info("Paste an email and classify it to get a suggested status update.")
         return
+
+    details = st.session_state.get("last_email_details", {})
+    match = st.session_state.get("last_application_match")
 
     col_a, col_b, col_c = st.columns(3)
     col_a.metric("Category", result["category"])
@@ -288,13 +301,39 @@ def render_email_assistant(applications: list[dict]) -> None:
     if result["matched_keywords"]:
         st.write("Matched keywords:", ", ".join(result["matched_keywords"]))
 
+    st.divider()
+    st.subheader("Extracted Application Context")
+    if any(details.values()):
+        detail_cols = st.columns(4)
+        detail_cols[0].metric("Company", details.get("company") or "-")
+        detail_cols[1].metric("Role", details.get("role") or "-")
+        detail_cols[2].metric("Contact", details.get("contact") or "-")
+        detail_cols[3].metric("Source link", "Found" if details.get("source_link") else "-")
+        if details.get("source_link"):
+            st.write("Source link:", details["source_link"])
+    else:
+        st.info("No company, role, contact, or source link could be extracted automatically.")
+
+    if match:
+        st.success(
+            f"Best application match: {match['company']} / {match['role']} "
+            f"(score {match['score']})"
+        )
+        if match["reasons"]:
+            st.caption("Match reason: " + ", ".join(match["reasons"]))
+    elif applications:
+        st.warning("No confident application match found. You can select one manually or create a new record.")
+
     if applications:
         st.divider()
         st.subheader("Apply Suggestion")
         label_id_map = _application_label_id_map(applications)
+        labels = list(label_id_map.keys())
+        default_index = _matched_label_index(labels, label_id_map, match)
         selected_label = st.selectbox(
             "Update an existing application",
-            list(label_id_map.keys()),
+            labels,
+            index=default_index,
             key="email_update_select",
         )
         selected_id = label_id_map[selected_label]
@@ -306,14 +345,18 @@ def render_email_assistant(applications: list[dict]) -> None:
                 follow_up_date = (date.today() + timedelta(days=result["suggested_follow_up_days"])).isoformat()
 
             notes = selected.get("notes", "")
-            note_line = f"Email classified as {result['category']} with {result['confidence']:.0%} confidence."
-            updated_notes = f"{notes}\n{note_line}".strip()
+            note_line = _build_email_note(result, details)
+            updated_notes = _append_note(notes, note_line)
+            contact = selected.get("contact", "") or details.get("contact", "")
+            source_link = selected.get("source_link", "") or details.get("source_link", "")
 
             update_application(
                 selected_id,
                 {
                     **selected,
                     "status": result["suggested_status"],
+                    "contact": contact,
+                    "source_link": source_link,
                     "next_action": result["suggested_next_action"],
                     "follow_up_date": follow_up_date,
                     "notes": updated_notes,
@@ -321,6 +364,53 @@ def render_email_assistant(applications: list[dict]) -> None:
             )
             st.success("Application updated from email classification.")
             st.rerun()
+
+    st.divider()
+    st.subheader("Create Application from Email")
+    with st.form("create_from_email_form", clear_on_submit=True):
+        col_company, col_role, col_location = st.columns(3)
+        company = col_company.text_input("Company", value=details.get("company", ""), key="email_create_company")
+        role = col_role.text_input("Role", value=details.get("role", ""), key="email_create_role")
+        location = col_location.text_input("Location", value="", key="email_create_location")
+
+        col_date, col_status, col_follow_up = st.columns(3)
+        application_date = col_date.date_input("Application date", value=date.today(), key="email_create_date")
+        status_index = STATUS_OPTIONS.index(result["suggested_status"]) if result["suggested_status"] in STATUS_OPTIONS else 1
+        status = col_status.selectbox("Status", STATUS_OPTIONS, index=status_index, key="email_create_status")
+        follow_up_date = ""
+        if result["suggested_follow_up_days"] is not None:
+            follow_up_date = (date.today() + timedelta(days=result["suggested_follow_up_days"])).isoformat()
+        keep_follow_up = col_follow_up.checkbox("Set suggested follow-up", value=bool(follow_up_date))
+
+        source_link = st.text_input("Source link", value=details.get("source_link", ""), key="email_create_source")
+        contact = st.text_input("Contact", value=details.get("contact", ""), key="email_create_contact")
+        next_action = st.text_input(
+            "Next action",
+            value=result["suggested_next_action"],
+            key="email_create_next_action",
+        )
+        notes = st.text_area("Notes", value=_build_email_note(result, details), key="email_create_notes")
+
+        if st.form_submit_button("Create application from email"):
+            if not company.strip() or not role.strip():
+                st.error("Company and role are required to create an application.")
+            else:
+                create_application(
+                    {
+                        "company": company,
+                        "role": role,
+                        "location": location,
+                        "application_date": application_date.isoformat(),
+                        "status": status,
+                        "source_link": source_link,
+                        "contact": contact,
+                        "notes": notes,
+                        "next_action": next_action,
+                        "follow_up_date": follow_up_date if keep_follow_up else "",
+                    }
+                )
+                st.success("Application created from email.")
+                st.rerun()
 
 
 def render_data_tools(applications: list[dict]) -> None:
@@ -395,6 +485,48 @@ def _application_label_id_map(applications: list[dict]) -> dict[str, int]:
         label = f"{row['#']} - {row['company']} - {row['role']}"
         labels[label] = int(row["id"])
     return labels
+
+
+def _matched_label_index(
+    labels: list[str],
+    label_id_map: dict[str, int],
+    match: dict | None,
+) -> int:
+    if not match:
+        return 0
+
+    matched_id = int(match["application_id"])
+    for index, label in enumerate(labels):
+        if label_id_map[label] == matched_id:
+            return index
+    return 0
+
+
+def _build_email_note(result: dict, details: dict[str, str]) -> str:
+    note_parts = [
+        f"Email classified as {result['category']} with {result['confidence']:.0%} confidence."
+    ]
+    extracted_parts = [
+        f"{label}: {details[value]}"
+        for label, value in [
+            ("Company", "company"),
+            ("Role", "role"),
+            ("Contact", "contact"),
+            ("Source", "source_link"),
+        ]
+        if details.get(value)
+    ]
+    if extracted_parts:
+        note_parts.append("Extracted " + "; ".join(extracted_parts))
+    return " ".join(note_parts)
+
+
+def _append_note(existing_notes: str, new_note: str) -> str:
+    if not existing_notes:
+        return new_note
+    if new_note in existing_notes:
+        return existing_notes
+    return f"{existing_notes}\n{new_note}"
 
 
 def _with_display_sequence(df: pd.DataFrame) -> pd.DataFrame:
