@@ -1,0 +1,12 @@
+Subject: Thank you for your application
+Body: We have received your application and will review it carefully.
+
+Subject: Interview invitation
+Body: We would like to invite you to an interview next week. Please share your availability for a call.
+
+Subject: Update on your application
+Body: Unfortunately, after careful consideration, we have decided not to proceed with your application.
+
+Subject: Technical assessment
+Body: Please complete the coding challenge by Friday. The instructions are attached.
+

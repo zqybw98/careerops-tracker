@@ -1,0 +1,6 @@
+streamlit>=1.36
+pandas>=2.2
+plotly>=5.22
+pytest>=8.2
+python-dotenv>=1.0
+
