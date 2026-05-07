@@ -37,4 +37,3 @@ def test_unknown_email_returns_other() -> None:
 
     assert result["category"] == "Other"
     assert result["confidence"] == 0.2
-

@@ -10,21 +10,19 @@ def build_summary(applications: list[dict[str, Any]]) -> dict[str, int]:
 
     return {
         "total": len(applications),
-        "applied_this_week": sum(
-            1
-            for item in applications
-            if _parse_date(item.get("application_date"))
-            and _parse_date(item.get("application_date")) >= week_start
-        ),
+        "applied_this_week": sum(1 for item in applications if _is_applied_this_week(item, week_start)),
         "waiting": sum(
-            1
-            for item in applications
-            if item.get("status") in {"Applied", "Confirmation Received", "No Response"}
+            1 for item in applications if item.get("status") in {"Applied", "Confirmation Received", "No Response"}
         ),
         "interviews": sum(1 for item in applications if item.get("status") == "Interview Scheduled"),
         "assessments": sum(1 for item in applications if item.get("status") == "Assessment"),
         "rejections": sum(1 for item in applications if item.get("status") == "Rejected"),
     }
+
+
+def _is_applied_this_week(item: dict[str, Any], week_start: date) -> bool:
+    application_date = _parse_date(item.get("application_date"))
+    return application_date is not None and application_date >= week_start
 
 
 def _parse_date(value: object) -> date | None:
@@ -34,4 +32,3 @@ def _parse_date(value: object) -> date | None:
         return datetime.strptime(str(value), "%Y-%m-%d").date()
     except ValueError:
         return None
-

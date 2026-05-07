@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 GENERIC_EMAIL_DOMAINS = {
     "gmail",
     "googlemail",
@@ -62,10 +61,7 @@ def match_application_from_email(
 
     details = extracted_details or extract_application_details(subject, body)
     text = _normalize_text(f"{subject}\n{body} {details.get('company', '')} {details.get('role', '')}")
-    scored_matches = [
-        _score_application_match(application, text, details)
-        for application in applications
-    ]
+    scored_matches = [_score_application_match(application, text, details) for application in applications]
     scored_matches = [match for match in scored_matches if match["score"] >= 3]
     if not scored_matches:
         return None

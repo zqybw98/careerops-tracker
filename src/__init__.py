@@ -1,2 +1,1 @@
 """CareerOps Tracker package."""
-

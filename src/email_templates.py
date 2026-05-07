@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-
 TEMPLATE_TYPES = [
     "Follow-up Email",
     "Interview Thank-you Email",
@@ -50,11 +49,7 @@ def generate_email_template(
 
 
 def _follow_up(context: dict[str, str]) -> dict[str, str]:
-    submitted_phrase = (
-        f" submitted on {context['application_date']}"
-        if context["application_date"]
-        else ""
-    )
+    submitted_phrase = f" submitted on {context['application_date']}" if context["application_date"] else ""
     return {
         "subject": f"Follow-up on {context['role']} application",
         "body": (

@@ -5,7 +5,7 @@ from datetime import date, timedelta
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-
+from src.csv_importer import normalize_import_rows
 from src.dashboard import build_summary
 from src.database import (
     create_application,
@@ -17,14 +17,12 @@ from src.database import (
     sync_applications,
     update_application,
 )
-from src.csv_importer import normalize_import_rows
 from src.demo_data import seed_sample_applications
 from src.email_classifier import classify_email
 from src.email_parser import extract_application_details, match_application_from_email
 from src.email_templates import TEMPLATE_TYPES, generate_email_template, suggest_template_type
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
 from src.reminder_engine import generate_reminders
-
 
 st.set_page_config(
     page_title="CareerOps Tracker",
@@ -330,10 +328,7 @@ def render_email_assistant(applications: list[dict]) -> None:
         st.info("No company, role, contact, or source link could be extracted automatically.")
 
     if match:
-        st.success(
-            f"Best application match: {match['company']} / {match['role']} "
-            f"(score {match['score']})"
-        )
+        st.success(f"Best application match: {match['company']} / {match['role']} (score {match['score']})")
         if match["reasons"]:
             st.caption("Match reason: " + ", ".join(match["reasons"]))
     elif applications:
@@ -391,7 +386,9 @@ def render_email_assistant(applications: list[dict]) -> None:
 
         col_date, col_status, col_follow_up = st.columns(3)
         application_date = col_date.date_input("Application date", value=date.today(), key="email_create_date")
-        status_index = STATUS_OPTIONS.index(result["suggested_status"]) if result["suggested_status"] in STATUS_OPTIONS else 1
+        status_index = (
+            STATUS_OPTIONS.index(result["suggested_status"]) if result["suggested_status"] in STATUS_OPTIONS else 1
+        )
         status = col_status.selectbox("Status", STATUS_OPTIONS, index=status_index, key="email_create_status")
         follow_up_date = ""
         if result["suggested_follow_up_days"] is not None:
@@ -536,7 +533,10 @@ def render_data_tools(applications: list[dict]) -> None:
 
     st.subheader("Expected CSV Columns")
     st.code(", ".join(APPLICATION_COLUMNS), language="text")
-    st.caption("English and common Chinese headers are supported, for example 公司名称, 职位名称, 申请日期, 最新状态, 备注/来源.")
+    st.caption(
+        "English and common Chinese headers are supported, "
+        "for example 公司名称, 职位名称, 申请日期, 最新状态, 备注/来源."
+    )
 
 
 def render_activity_log(application_id: int) -> None:
@@ -583,9 +583,7 @@ def _matched_label_index(
 
 
 def _build_email_note(result: dict, details: dict[str, str]) -> str:
-    note_parts = [
-        f"Email classified as {result['category']} with {result['confidence']:.0%} confidence."
-    ]
+    note_parts = [f"Email classified as {result['category']} with {result['confidence']:.0%} confidence."]
     extracted_parts = [
         f"{label}: {details[value]}"
         for label, value in [

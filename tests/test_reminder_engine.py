@@ -56,4 +56,3 @@ def test_due_follow_up_date_has_high_priority() -> None:
     assert len(reminders) == 1
     assert reminders[0]["reason"] == "follow_up_date"
     assert reminders[0]["priority"] == "High"
-

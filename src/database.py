@@ -7,7 +7,6 @@ from typing import Any
 
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
 
-
 DEFAULT_DB_PATH = Path("data/applications.db")
 
 
@@ -72,7 +71,9 @@ def create_application(
             f"INSERT INTO applications ({', '.join(columns)}) VALUES ({placeholders})",
             values,
         )
-        application_id = int(cursor.lastrowid)
+        if cursor.lastrowid is None:
+            raise RuntimeError("Failed to create application record.")
+        application_id = cursor.lastrowid
         _insert_event(
             connection,
             application_id=application_id,

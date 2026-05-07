@@ -49,7 +49,9 @@ flowchart LR
 | `src/reminder_engine.py` | Generates follow-up, interview, assessment, stale-application, and saved-role reminders. |
 | `src/demo_data.py` | Loads portfolio-friendly sample data from `samples/sample_applications.csv` without duplicates. |
 | `tests/` | Regression tests for persistence, email rules, reminder rules, and demo data loading. |
-| `.github/workflows/tests.yml` | Runs pytest automatically on push and pull requests. |
+| `pyproject.toml` | Central configuration for Ruff linting, Ruff formatting, and mypy type checking. |
+| `.pre-commit-config.yaml` | Local hooks for lint auto-fix, formatting, and type checks before commits. |
+| `.github/workflows/tests.yml` | Runs lint, format, type checks, and pytest on push and pull requests. |
 
 ## Data Model
 
@@ -189,7 +191,15 @@ The project uses pytest for fast regression tests:
 - demo data tests verify sample CSV loading and idempotent import behavior
 
 GitHub Actions runs the same test suite on every push and pull request to
-demonstrate basic CI discipline.
+demonstrate basic CI discipline. The CI pipeline also runs `ruff check`,
+`ruff format --check`, and `mypy src` so formatting, linting, type hints, and
+regression tests are checked together.
+
+Pre-commit hooks run the same local quality gates before commits:
+
+- `ruff check --fix`
+- `ruff format`
+- `mypy src`
 
 ## Optional Gmail Module
 

@@ -2,11 +2,27 @@ from __future__ import annotations
 
 import re
 from dataclasses import asdict
+from typing import Any, TypedDict
 
 from src.models import EmailClassification
 
 
-CATEGORY_RULES = [
+class CategoryRule(TypedDict):
+    category: str
+    priority: int
+    suggested_status: str
+    suggested_next_action: str
+    suggested_follow_up_days: int | None
+    keywords: list[str]
+
+
+class ClassificationMatch(TypedDict):
+    rule: CategoryRule
+    matched_keywords: list[str]
+    score: int
+
+
+CATEGORY_RULES: list[CategoryRule] = [
     {
         "category": "Interview Invitation",
         "priority": 3,
@@ -114,11 +130,11 @@ CATEGORY_RULES = [
 ]
 
 
-def classify_email(subject: str = "", body: str = "") -> dict:
+def classify_email(subject: str = "", body: str = "") -> dict[str, Any]:
     text = _normalize_text(f"{subject}\n{body}")
     subject_text = _normalize_text(subject)
 
-    best_result: dict | None = None
+    best_result: ClassificationMatch | None = None
     for rule in CATEGORY_RULES:
         matched = _matched_keywords(text, rule["keywords"])
         if not matched:
@@ -128,7 +144,7 @@ def classify_email(subject: str = "", body: str = "") -> dict:
         score += sum(1 for keyword in matched if keyword in subject_text)
         score += sum(1 for keyword in matched if len(keyword.split()) >= 3)
 
-        result = {
+        result: ClassificationMatch = {
             "rule": rule,
             "matched_keywords": matched,
             "score": score,
@@ -171,7 +187,7 @@ def _matched_keywords(text: str, keywords: list[str]) -> list[str]:
     return matches
 
 
-def _is_better_result(candidate: dict, current: dict) -> bool:
+def _is_better_result(candidate: ClassificationMatch, current: ClassificationMatch) -> bool:
     if candidate["score"] != current["score"]:
         return candidate["score"] > current["score"]
     return candidate["rule"]["priority"] > current["rule"]["priority"]

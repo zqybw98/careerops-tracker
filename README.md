@@ -48,6 +48,10 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 - pandas
 - plotly
 - pytest
+- ruff
+- mypy
+- pre-commit
+- GitHub Actions
 
 ## Project Structure
 
@@ -55,6 +59,13 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 .
 |-- app.py
 |-- requirements.txt
+|-- requirements-dev.txt
+|-- pyproject.toml
+|-- .pre-commit-config.yaml
+|-- .github/
+|   `-- workflows/
+|       |-- tests.yml
+|       `-- release.yml
 |-- src/
 |   |-- database.py
 |   |-- csv_importer.py
@@ -100,6 +111,13 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
+For development checks:
+
+```bash
+pip install -r requirements-dev.txt
+pre-commit install
+```
+
 Run the app:
 
 ```bash
@@ -110,6 +128,15 @@ Run tests:
 
 ```bash
 pytest
+```
+
+Run quality checks locally:
+
+```bash
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy src
+python -m pytest
 ```
 
 ## Example Workflow

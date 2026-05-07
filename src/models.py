@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-
 STATUS_OPTIONS = [
     "Saved",
     "Applied",
@@ -39,4 +38,3 @@ class EmailClassification:
     suggested_next_action: str
     suggested_follow_up_days: int | None
     matched_keywords: list[str]
-

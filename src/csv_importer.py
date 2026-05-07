@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
 
@@ -108,7 +109,7 @@ def normalize_import_rows(records: Iterable[Mapping[str, Any]]) -> CsvImportResu
 def _source_columns(records: list[Mapping[str, Any]]) -> list[str]:
     if not records:
         return []
-    return [str(column) for column in records[0].keys()]
+    return [str(column) for column in records[0]]
 
 
 def _infer_column_mapping(columns: list[str]) -> dict[str, str]:
