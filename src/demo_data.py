@@ -34,7 +34,7 @@ def seed_sample_applications(
         and row.get("role")
         and _application_key(row) not in existing_keys
     ]
-    return bulk_create_applications(rows_to_create, db_path=db_path)
+    return bulk_create_applications(rows_to_create, db_path=db_path, source="demo_data")
 
 
 def _application_key(application: dict[str, Any]) -> tuple[str, str, str]:

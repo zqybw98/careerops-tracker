@@ -39,7 +39,7 @@ flowchart LR
 | Component | Responsibility |
 | --- | --- |
 | `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. |
-| `src/database.py` | SQLite connection management, schema creation, CRUD, CSV sync imports, and duplicate cleanup. |
+| `src/database.py` | SQLite connection management, schema creation, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |
 | `src/csv_importer.py` | Normalizes English and Chinese CSV headers, dates, and statuses before import. |
 | `src/models.py` | Shared status options, application columns, and classification result shape. |
 | `src/dashboard.py` | Aggregates applications into total, weekly, waiting, interview, assessment, and rejection metrics. |
@@ -52,7 +52,9 @@ flowchart LR
 
 ## Data Model
 
-The MVP stores one table, `applications`, in SQLite.
+The MVP stores application records and traceability events in SQLite.
+
+### `applications`
 
 | Field | Purpose |
 | --- | --- |
@@ -70,8 +72,27 @@ The MVP stores one table, `applications`, in SQLite.
 | `created_at` | UTC timestamp for record creation. |
 | `updated_at` | UTC timestamp for the latest update. |
 
+### `application_events`
+
+| Field | Purpose |
+| --- | --- |
+| `id` | Auto-incrementing event id. |
+| `application_id` | Application record affected by the event. |
+| `event_type` | Event name such as `application_created`, `status_changed`, or `application_deleted`. |
+| `old_value` | Previous value or previous application summary. |
+| `new_value` | New value or new application summary. |
+| `source` | Actor/source such as `manual`, `csv_import`, `email_assistant`, `demo_data`, or `duplicate_cleanup`. |
+| `created_at` | UTC timestamp when the event was recorded. |
+
 The database is local and ignored by Git (`data/*.db`), so sample data and tests
 can be shared without exposing personal job search records.
+
+## Activity Logging
+
+Every create, update, delete, CSV sync import, email-assistant update, demo-data
+load, and duplicate-cleanup action can write an event to `application_events`.
+The application management view shows the selected record's activity log, which
+improves traceability and makes status changes auditable.
 
 ## Application Statuses
 
@@ -152,7 +173,7 @@ created by older append-only imports.
 
 The project uses pytest for fast regression tests:
 
-- database tests verify application creation and updates
+- database tests verify application creation, updates, sync imports, duplicate cleanup, and activity events
 - email classifier tests verify core recruiting email categories
 - reminder tests verify follow-up, interview, assessment, and closed-status logic
 - demo data tests verify sample CSV loading and idempotent import behavior

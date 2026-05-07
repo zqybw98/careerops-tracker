@@ -14,6 +14,7 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 - Suggest application status updates from email classification results.
 - Match recruiting emails to existing applications or create a new application from email context.
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
+- Keep an activity log for application creation, updates, imports, email-assistant actions, and cleanup.
 - View a Streamlit dashboard with application metrics and status charts.
 - Load demo applications to preview the dashboard immediately after setup.
 - Import and export applications with CSV, including common English and Chinese headers.

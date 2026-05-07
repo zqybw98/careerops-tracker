@@ -11,6 +11,7 @@ from src.database import (
     create_application,
     deduplicate_applications,
     delete_application,
+    get_application_events,
     get_applications,
     init_db,
     sync_applications,
@@ -161,7 +162,8 @@ def render_applications(applications: list[dict]) -> None:
                         "notes": notes,
                         "next_action": next_action,
                         "follow_up_date": _date_to_text(follow_up_date),
-                    }
+                    },
+                    source="manual",
                 )
                 st.success("Application added.")
                 st.rerun()
@@ -261,14 +263,18 @@ def render_applications(applications: list[dict]) -> None:
                     "next_action": next_action,
                     "follow_up_date": follow_up_value.isoformat() if keep_follow_up else "",
                 },
+                source="manual",
             )
             st.success("Application updated.")
             st.rerun()
 
         if delete_clicked:
-            delete_application(selected_id)
+            delete_application(selected_id, source="manual")
             st.warning("Application deleted.")
             st.rerun()
+
+    st.subheader("Activity Log")
+    render_activity_log(selected_id)
 
 
 def render_email_assistant(applications: list[dict]) -> None:
@@ -366,6 +372,7 @@ def render_email_assistant(applications: list[dict]) -> None:
                     "follow_up_date": follow_up_date,
                     "notes": updated_notes,
                 },
+                source="email_assistant",
             )
             st.success("Application updated from email classification.")
             st.rerun()
@@ -412,7 +419,8 @@ def render_email_assistant(applications: list[dict]) -> None:
                         "notes": notes,
                         "next_action": next_action,
                         "follow_up_date": follow_up_date if keep_follow_up else "",
-                    }
+                    },
+                    source="email_assistant",
                 )
                 st.success("Application created from email.")
                 st.rerun()
@@ -461,7 +469,7 @@ def render_data_tools(applications: list[dict]) -> None:
             )
 
         if import_result.rows and st.button("Import CSV"):
-            result = sync_applications(import_result.rows)
+            result = sync_applications(import_result.rows, source="csv_import")
             st.success(
                 f"Import complete: {result['created']} created, "
                 f"{result['updated']} updated, {result['skipped']} unchanged."
@@ -481,6 +489,25 @@ def render_data_tools(applications: list[dict]) -> None:
     st.subheader("Expected CSV Columns")
     st.code(", ".join(APPLICATION_COLUMNS), language="text")
     st.caption("English and common Chinese headers are supported, for example 公司名称, 职位名称, 申请日期, 最新状态, 备注/来源.")
+
+
+def render_activity_log(application_id: int) -> None:
+    events = get_application_events(application_id)
+    if not events:
+        st.info("No activity recorded for this application yet.")
+        return
+
+    event_df = pd.DataFrame(events)
+    event_df = event_df[
+        [
+            "created_at",
+            "event_type",
+            "source",
+            "old_value",
+            "new_value",
+        ]
+    ]
+    st.dataframe(event_df, use_container_width=True, hide_index=True)
 
 
 def _application_label_id_map(applications: list[dict]) -> dict[str, int]:

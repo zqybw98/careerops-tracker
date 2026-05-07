@@ -3,6 +3,7 @@ from pathlib import Path
 from src.database import (
     create_application,
     deduplicate_applications,
+    get_application_events,
     get_applications,
     init_db,
     sync_applications,
@@ -29,6 +30,9 @@ def test_create_and_update_application(tmp_path: Path) -> None:
     assert len(applications) == 1
     assert applications[0]["id"] == application_id
     assert applications[0]["company"] == "Example GmbH"
+    events = get_application_events(application_id, db_path)
+    assert events[0]["event_type"] == "application_created"
+    assert events[0]["source"] == "manual"
 
     update_application(
         application_id,
@@ -43,6 +47,9 @@ def test_create_and_update_application(tmp_path: Path) -> None:
     updated = get_applications(db_path)[0]
     assert updated["status"] == "Interview Scheduled"
     assert updated["next_action"] == "Prepare interview notes"
+    update_events = get_application_events(application_id, db_path)
+    assert any(event["event_type"] == "status_changed" for event in update_events)
+    assert any(event["event_type"] == "next_action_changed" for event in update_events)
 
 
 def test_sync_applications_updates_existing_records(tmp_path: Path) -> None:
@@ -76,6 +83,7 @@ def test_sync_applications_updates_existing_records(tmp_path: Path) -> None:
             },
         ],
         db_path=db_path,
+        source="csv_import",
     )
 
     applications = get_applications(db_path)
@@ -86,6 +94,11 @@ def test_sync_applications_updates_existing_records(tmp_path: Path) -> None:
     assert sap["status"] == "Rejected"
     assert "Submitted through career portal" in sap["notes"]
     assert "Rejected after screening" in sap["notes"]
+    events = get_application_events(sap["id"], db_path)
+    status_events = [event for event in events if event["event_type"] == "status_changed"]
+    assert status_events[0]["old_value"] == "Applied"
+    assert status_events[0]["new_value"] == "Rejected"
+    assert status_events[0]["source"] == "csv_import"
 
 
 def test_sync_applications_skips_unchanged_records(tmp_path: Path) -> None:
