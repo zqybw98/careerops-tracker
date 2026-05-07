@@ -121,3 +121,7 @@ This project demonstrates practical automation, structured information managemen
 ### Email Classification Assistant
 
 ![Email Classification Assistant](docs/screenshots/email-assistant.png)
+
+### Application Records
+
+![Application Records](docs/screenshots/recent-applications.png)
