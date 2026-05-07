@@ -167,6 +167,16 @@ def render_applications(applications: list[dict]) -> None:
         st.info("No applications yet.")
         return
 
+    cleanup_col, helper_col = st.columns([1, 4])
+    if cleanup_col.button("Clean duplicate applications", key="manage_clean_duplicates"):
+        removed = deduplicate_applications()
+        if removed:
+            st.success(f"Removed {removed} duplicate records.")
+        else:
+            st.info("No duplicate records found.")
+        st.rerun()
+    helper_col.caption("Removes repeated rows with the same company, role, and application date.")
+
     df = _with_display_sequence(pd.DataFrame(applications))
     selected_statuses = st.multiselect("Filter by status", STATUS_OPTIONS, default=STATUS_OPTIONS)
     filtered = df[df["status"].isin(selected_statuses)]
@@ -325,7 +335,7 @@ def render_data_tools(applications: list[dict]) -> None:
     if applications:
         with st.expander("Maintenance"):
             st.caption("Use this after repeated CSV imports to remove duplicate company/role/date records.")
-            if st.button("Clean duplicate applications"):
+            if st.button("Clean duplicate applications", key="data_clean_duplicates"):
                 removed = deduplicate_applications()
                 if removed:
                     st.success(f"Removed {removed} duplicate records.")
