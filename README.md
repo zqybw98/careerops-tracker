@@ -108,3 +108,16 @@ This project demonstrates practical automation, structured information managemen
 - ML-based email classification.
 - Weekly job search report export.
 
+## Screenshots
+
+### Dashboard
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Application Management
+
+![Application Management](docs/screenshots/applications.png)
+
+### Email Classification Assistant
+
+![Email Classification Assistant](docs/screenshots/email-assistant.png)
