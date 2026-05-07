@@ -201,11 +201,9 @@ def render_applications(applications: list[dict]) -> None:
         hide_index=True,
     )
 
-    selected_label = st.selectbox(
-        "Select application to edit",
-        [format_application_label(item) for item in applications],
-    )
-    selected_id = int(selected_label.split(" - ")[0])
+    label_id_map = _application_label_id_map(applications)
+    selected_label = st.selectbox("Select application to edit", list(label_id_map.keys()))
+    selected_id = label_id_map[selected_label]
     selected = next(item for item in applications if item["id"] == selected_id)
 
     with st.form("edit_application_form"):
@@ -293,12 +291,13 @@ def render_email_assistant(applications: list[dict]) -> None:
     if applications:
         st.divider()
         st.subheader("Apply Suggestion")
+        label_id_map = _application_label_id_map(applications)
         selected_label = st.selectbox(
             "Update an existing application",
-            [format_application_label(item) for item in applications],
+            list(label_id_map.keys()),
             key="email_update_select",
         )
-        selected_id = int(selected_label.split(" - ")[0])
+        selected_id = label_id_map[selected_label]
         selected = next(item for item in applications if item["id"] == selected_id)
 
         if st.button("Apply suggested status"):
@@ -389,8 +388,13 @@ def render_data_tools(applications: list[dict]) -> None:
     st.caption("English and common Chinese headers are supported, for example 公司名称, 职位名称, 申请日期, 最新状态, 备注/来源.")
 
 
-def format_application_label(application: dict) -> str:
-    return f"{application['id']} - {application['company']} - {application['role']}"
+def _application_label_id_map(applications: list[dict]) -> dict[str, int]:
+    display_df = _with_display_sequence(pd.DataFrame(applications))
+    labels: dict[str, int] = {}
+    for row in display_df.to_dict(orient="records"):
+        label = f"{row['#']} - {row['company']} - {row['role']}"
+        labels[label] = int(row["id"])
+    return labels
 
 
 def _with_display_sequence(df: pd.DataFrame) -> pd.DataFrame:
