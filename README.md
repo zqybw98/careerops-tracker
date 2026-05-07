@@ -14,6 +14,24 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 - Import and export applications with CSV.
 - Keep Gmail API integration optional for future expansion.
 
+## Screenshots
+
+### Dashboard
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+### Application Records
+
+![Application Records](docs/screenshots/recent-applications.png)
+
+### Email Classification Assistant
+
+![Email Classification Assistant](docs/screenshots/email-assistant.png)
+
+### Application Management
+
+![Application Management](docs/screenshots/applications.png)
+
 ## Tech Stack
 
 - Python
@@ -27,23 +45,23 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 
 ```text
 .
-├── app.py
-├── requirements.txt
-├── src/
-│   ├── database.py
-│   ├── dashboard.py
-│   ├── email_classifier.py
-│   ├── models.py
-│   └── reminder_engine.py
-├── tests/
-│   ├── test_application_service.py
-│   ├── test_email_classifier.py
-│   └── test_reminder_engine.py
-├── samples/
-│   ├── sample_applications.csv
-│   └── sample_emails.txt
-└── docs/
-    └── architecture.md
+|-- app.py
+|-- requirements.txt
+|-- src/
+|   |-- database.py
+|   |-- dashboard.py
+|   |-- email_classifier.py
+|   |-- models.py
+|   `-- reminder_engine.py
+|-- tests/
+|   |-- test_application_service.py
+|   |-- test_email_classifier.py
+|   `-- test_reminder_engine.py
+|-- samples/
+|   |-- sample_applications.csv
+|   `-- sample_emails.txt
+`-- docs/
+    `-- architecture.md
 ```
 
 ## Getting Started
@@ -107,21 +125,3 @@ This project demonstrates practical automation, structured information managemen
 - Follow-up email template generator.
 - ML-based email classification.
 - Weekly job search report export.
-
-## Screenshots
-
-### Dashboard
-
-![Dashboard](docs/screenshots/dashboard.png)
-
-### Application Management
-
-![Application Management](docs/screenshots/applications.png)
-
-### Email Classification Assistant
-
-![Email Classification Assistant](docs/screenshots/email-assistant.png)
-
-### Application Records
-
-![Application Records](docs/screenshots/recent-applications.png)
