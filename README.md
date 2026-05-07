@@ -11,6 +11,7 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 - Suggest application status updates from email classification results.
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
 - View a Streamlit dashboard with application metrics and status charts.
+- Load demo applications to preview the dashboard immediately after setup.
 - Import and export applications with CSV.
 - Keep Gmail API integration optional for future expansion.
 
@@ -50,11 +51,13 @@ CareerOps Tracker helps job seekers structure applications, classify recruiting 
 |-- src/
 |   |-- database.py
 |   |-- dashboard.py
+|   |-- demo_data.py
 |   |-- email_classifier.py
 |   |-- models.py
 |   `-- reminder_engine.py
 |-- tests/
 |   |-- test_application_service.py
+|   |-- test_demo_data.py
 |   |-- test_email_classifier.py
 |   `-- test_reminder_engine.py
 |-- samples/
@@ -103,6 +106,8 @@ pytest
 3. Review the detected category, confidence score, matched keywords, and suggested status.
 4. Apply the suggested update to an existing application.
 5. Use the dashboard to monitor waiting applications and follow-up tasks.
+
+For a quick demo, open the Data tab and click `Load sample applications`.
 
 ## Email Categories
 

@@ -15,6 +15,7 @@ from src.database import (
     init_db,
     update_application,
 )
+from src.demo_data import seed_sample_applications
 from src.email_classifier import classify_email
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
 from src.reminder_engine import generate_reminders
@@ -293,6 +294,14 @@ def render_email_assistant(applications: list[dict]) -> None:
 
 def render_data_tools(applications: list[dict]) -> None:
     st.subheader("Import / Export")
+
+    if st.button("Load sample applications"):
+        created = seed_sample_applications()
+        if created:
+            st.success(f"Loaded {created} sample applications.")
+        else:
+            st.info("Sample applications are already loaded.")
+        st.rerun()
 
     uploaded_file = st.file_uploader("Import applications from CSV", type=["csv"])
     if uploaded_file is not None:

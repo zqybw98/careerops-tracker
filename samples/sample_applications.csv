@@ -1,5 +1,5 @@
 company,role,location,application_date,status,source_link,contact,notes,next_action,follow_up_date
-Siemens,Working Student QA Automation,Berlin,2026-05-01,Applied,https://example.com/siemens-qa,,Applied through company career page,Follow up if no reply,2026-05-08
-Zalando,Junior Technical Operations Analyst,Berlin,2026-04-29,Interview Scheduled,https://example.com/zalando-ops,recruiting@example.com,Phone screen scheduled,Prepare interview notes,2026-05-07
-SAP,Intern Automation Engineer,Walldorf,2026-04-20,Rejected,https://example.com/sap-auto,,Rejected after screening,Capture lessons learned,
-
+Siemens,Working Student QA Automation,Berlin,2026-05-07,Applied,https://example.com/siemens-qa,,Applied through company career page,Follow up in one week,2026-05-14
+Zalando,Junior Technical Operations Analyst,Berlin,2026-05-07,Interview Scheduled,https://example.com/zalando-ops,recruiting@example.com,Phone screen scheduled,Prepare interview notes,2026-05-07
+Bosch,Automation Testing Intern,Stuttgart,2026-05-07,Assessment,https://example.com/bosch-test,,Coding assessment received,Complete coding assessment,2026-05-09
+SAP,QA Engineer Intern,Walldorf,2026-05-07,Rejected,https://example.com/sap-qa,,Rejected after screening,Capture lessons learned,
