@@ -194,8 +194,9 @@ This project demonstrates practical automation, structured information managemen
 
 ## Future Improvements
 
-- Optional Gmail API integration.
-- Calendar reminders.
-- Follow-up email template generator.
+- Copy-to-clipboard action for generated email templates.
+- Optional Gmail draft integration.
+- Calendar sync for interviews, assessments, and follow-up dates.
+- Global activity feed across all application records.
 - ML-based email classification.
-- Weekly job search report export.
+- Weekly analytics export.
