@@ -2,15 +2,15 @@
 
 [![Python Tests](https://github.com/zqybw98/careerops-tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/zqybw98/careerops-tracker/actions/workflows/tests.yml)
 
+[Live Demo](https://careerops-tracker.streamlit.app/)
+
 A lightweight job application tracker and email classification assistant built with Python, Streamlit, and SQLite.
 
 CareerOps Tracker helps job seekers structure applications, classify recruiting emails, and generate follow-up reminders from simple automation rules.
 
 ## Live Demo
 
-This project is prepared for Streamlit Community Cloud deployment.
-
-After deploying, add the generated `https://...streamlit.app` URL here so recruiters can open the app directly.
+Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://careerops-tracker.streamlit.app/)
 
 ## Features
 
