@@ -32,6 +32,7 @@ def init_db(db_path: Path | str = DEFAULT_DB_PATH) -> None:
                 source_link TEXT,
                 contact TEXT,
                 notes TEXT,
+                rejection_reason TEXT,
                 next_action TEXT,
                 follow_up_date TEXT,
                 created_at TEXT NOT NULL,
@@ -39,6 +40,7 @@ def init_db(db_path: Path | str = DEFAULT_DB_PATH) -> None:
             )
             """
         )
+        _ensure_application_columns(connection)
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS application_events (
@@ -265,6 +267,19 @@ def _clean_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if cleaned["status"] not in STATUS_OPTIONS:
         cleaned["status"] = "Applied"
     return cleaned
+
+
+def _ensure_application_columns(connection: sqlite3.Connection) -> None:
+    existing_columns = {
+        str(row["name"])
+        for row in connection.execute(
+            """
+            PRAGMA table_info(applications)
+            """
+        ).fetchall()
+    }
+    if "rejection_reason" not in existing_columns:
+        connection.execute("ALTER TABLE applications ADD COLUMN rejection_reason TEXT")
 
 
 def _get_application_by_id(connection: sqlite3.Connection, application_id: int) -> dict[str, Any] | None:

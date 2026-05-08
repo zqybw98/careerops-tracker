@@ -25,6 +25,7 @@ APPLICATION_COLUMNS = [
     "source_link",
     "contact",
     "notes",
+    "rejection_reason",
     "next_action",
     "follow_up_date",
 ]

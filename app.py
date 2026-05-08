@@ -271,6 +271,10 @@ def render_applications(applications: list[dict]) -> None:
         source_link = st.text_input("Source link")
         contact = st.text_input("Contact")
         next_action = st.text_input("Next action")
+        rejection_reason = st.text_area(
+            "Rejection reason",
+            placeholder="Optional. Useful when status is Rejected, for example after HR screen or position closed.",
+        )
         notes = st.text_area("Notes")
 
         submitted = st.form_submit_button("Add application")
@@ -288,6 +292,7 @@ def render_applications(applications: list[dict]) -> None:
                         "source_link": source_link,
                         "contact": contact,
                         "notes": notes,
+                        "rejection_reason": rejection_reason,
                         "next_action": next_action,
                         "follow_up_date": _date_to_text(follow_up_date),
                     },
@@ -370,6 +375,12 @@ def render_applications(applications: list[dict]) -> None:
             value=selected.get("next_action", ""),
             key=f"{key_prefix}_next_action",
         )
+        rejection_reason = st.text_area(
+            "Rejection reason",
+            value=selected.get("rejection_reason", ""),
+            placeholder="Optional. Add context such as no interview, after HR screen, position closed, or mismatch.",
+            key=f"{key_prefix}_rejection_reason",
+        )
         notes = st.text_area("Notes", value=selected.get("notes", ""), key=f"{key_prefix}_notes")
 
         col_save, col_delete = st.columns(2)
@@ -388,6 +399,7 @@ def render_applications(applications: list[dict]) -> None:
                     "source_link": source_link,
                     "contact": contact,
                     "notes": notes,
+                    "rejection_reason": rejection_reason,
                     "next_action": next_action,
                     "follow_up_date": follow_up_value.isoformat() if keep_follow_up else "",
                 },
@@ -485,6 +497,9 @@ def render_email_assistant(applications: list[dict]) -> None:
             updated_notes = _append_note(notes, note_line)
             contact = selected.get("contact", "") or details.get("contact", "")
             source_link = selected.get("source_link", "") or details.get("source_link", "")
+            rejection_reason = selected.get("rejection_reason", "")
+            if result["suggested_status"] == "Rejected" and not rejection_reason:
+                rejection_reason = "Rejected based on classified recruiting email."
 
             update_application(
                 selected_id,
@@ -496,6 +511,7 @@ def render_email_assistant(applications: list[dict]) -> None:
                     "next_action": result["suggested_next_action"],
                     "follow_up_date": follow_up_date,
                     "notes": updated_notes,
+                    "rejection_reason": rejection_reason,
                 },
                 source="email_assistant",
             )
@@ -529,6 +545,11 @@ def render_email_assistant(applications: list[dict]) -> None:
             key="email_create_next_action",
         )
         notes = st.text_area("Notes", value=_build_email_note(result, details), key="email_create_notes")
+        rejection_reason = st.text_area(
+            "Rejection reason",
+            value="Rejected based on classified recruiting email." if status == "Rejected" else "",
+            key="email_create_rejection_reason",
+        )
 
         if st.form_submit_button("Create application from email"):
             if not company.strip() or not role.strip():
@@ -544,6 +565,7 @@ def render_email_assistant(applications: list[dict]) -> None:
                         "source_link": source_link,
                         "contact": contact,
                         "notes": notes,
+                        "rejection_reason": rejection_reason,
                         "next_action": next_action,
                         "follow_up_date": follow_up_date if keep_follow_up else "",
                     },

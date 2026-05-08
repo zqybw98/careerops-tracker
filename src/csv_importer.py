@@ -54,6 +54,15 @@ COLUMN_ALIASES = {
         "备注/来源",
         "备注/来源 (notes)",
     ],
+    "rejection_reason": [
+        "rejection_reason",
+        "rejection reason",
+        "reason rejected",
+        "rejected reason",
+        "拒绝原因",
+        "拒信原因",
+        "被拒原因",
+    ],
     "follow_up_date": [
         "follow_up_date",
         "follow up date",

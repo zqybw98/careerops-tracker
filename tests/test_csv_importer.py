@@ -9,6 +9,7 @@ def test_imports_chinese_header_csv_rows() -> None:
                 "职位名称 (Position)": "Werkstudent Informatik",
                 "申请日期 (Date Applied)": "2023/5/3",
                 "最新状态 (Status)": "已收到拒信",
+                "拒绝原因": "After HR screen",
                 "备注/来源 (Notes)": "",
                 "Column 1": "",
                 "Unnamed: 6": "",
@@ -29,6 +30,7 @@ def test_imports_chinese_header_csv_rows() -> None:
     assert result.rows[0]["company"] == "Bosch"
     assert result.rows[0]["application_date"] == "2023-05-03"
     assert result.rows[0]["status"] == "Rejected"
+    assert result.rows[0]["rejection_reason"] == "After HR screen"
     assert result.rows[1]["status"] == "Confirmation Received"
 
 

@@ -14,7 +14,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 
 ## Features
 
-- Track companies, roles, locations, application dates, links, contacts, notes, and status.
+- Track companies, roles, locations, application dates, links, contacts, notes, rejection reasons, and status.
 - Classify recruiting emails as confirmation, recruiter reply, interview, assessment, rejection, follow-up, or other.
 - Extract company, role, contact, and source-link hints from pasted recruiting emails.
 - Suggest application status updates from email classification results.
@@ -174,7 +174,7 @@ Full deployment steps are in [`docs/deployment.md`](docs/deployment.md).
 For a quick demo, open the Data tab and click `Load sample applications`.
 
 The CSV importer supports the default English columns and common Chinese headers
-such as `公司名称`, `职位名称`, `申请日期`, `最新状态`, and `备注/来源`.
+such as `公司名称`, `职位名称`, `申请日期`, `最新状态`, `拒绝原因`, and `备注/来源`.
 When the same company, role, and application date already exist, CSV import
 updates the existing record instead of adding a duplicate.
 

@@ -73,6 +73,7 @@ The MVP stores application records and traceability events in SQLite.
 | `source_link` | Job post or company career page URL. |
 | `contact` | Recruiter or contact email/name. |
 | `notes` | Free-form application notes. |
+| `rejection_reason` | Optional rejected-application context used for later review and analytics. |
 | `next_action` | Human-readable next step. |
 | `follow_up_date` | Date used by the reminder engine. |
 | `created_at` | UTC timestamp for record creation. |
@@ -99,6 +100,12 @@ Every create, update, delete, CSV sync import, email-assistant update, demo-data
 load, and duplicate-cleanup action can write an event to `application_events`.
 The application management view shows the selected record's activity log, which
 improves traceability and makes status changes auditable.
+
+Rejected applications can also store a dedicated `rejection_reason`. This keeps
+the main application table readable while preserving useful review context such
+as no interview, after HR screen, position closed, experience mismatch, or
+language/location mismatch. Changes to this field are recorded in the activity
+log like other application updates.
 
 ## Application Statuses
 
@@ -187,8 +194,8 @@ types are converting into interviews or assessments.
 CSV import/export makes the tool portable and easy to review. The expected CSV
 columns are defined in `src/models.py` as `APPLICATION_COLUMNS`. The importer
 also supports common Chinese headers such as `公司名称`, `职位名称`, `申请日期`,
-`最新状态`, and `备注/来源`, then normalizes them into the internal application
-schema.
+`最新状态`, `拒绝原因`, and `备注/来源`, then normalizes them into the internal
+application schema.
 
 The Data tab also includes `Load sample applications`, which imports demo rows
 from `samples/sample_applications.csv`. The loader checks company, role, and

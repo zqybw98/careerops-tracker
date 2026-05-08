@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 from src.database import (
@@ -50,6 +51,70 @@ def test_create_and_update_application(tmp_path: Path) -> None:
     update_events = get_application_events(application_id, db_path)
     assert any(event["event_type"] == "status_changed" for event in update_events)
     assert any(event["event_type"] == "next_action_changed" for event in update_events)
+
+
+def test_rejection_reason_is_tracked_in_activity_log(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    init_db(db_path)
+
+    application_id = create_application(
+        {
+            "company": "Example GmbH",
+            "role": "QA Automation Intern",
+            "application_date": "2026-05-07",
+            "status": "Applied",
+        },
+        db_path=db_path,
+    )
+
+    update_application(
+        application_id,
+        {
+            "company": "Example GmbH",
+            "role": "QA Automation Intern",
+            "application_date": "2026-05-07",
+            "status": "Rejected",
+            "rejection_reason": "Position closed after application review.",
+        },
+        db_path=db_path,
+    )
+
+    updated = get_applications(db_path)[0]
+    events = get_application_events(application_id, db_path)
+
+    assert updated["rejection_reason"] == "Position closed after application review."
+    assert any(event["event_type"] == "rejection_reason_changed" for event in events)
+
+
+def test_init_db_migrates_rejection_reason_column(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE applications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company TEXT NOT NULL,
+                role TEXT NOT NULL,
+                location TEXT,
+                application_date TEXT,
+                status TEXT NOT NULL DEFAULT 'Applied',
+                source_link TEXT,
+                contact TEXT,
+                notes TEXT,
+                next_action TEXT,
+                follow_up_date TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+
+    init_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(applications)").fetchall()}
+
+    assert "rejection_reason" in columns
 
 
 def test_sync_applications_updates_existing_records(tmp_path: Path) -> None:
