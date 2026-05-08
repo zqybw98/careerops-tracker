@@ -96,8 +96,10 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
             y="count",
             color="status",
             title="Applications by Status",
+            text="count",
         )
         fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Applications")
+        _style_bar_labels(fig)
         st.plotly_chart(fig, use_container_width=True)
 
     with reminder_col:
@@ -134,8 +136,10 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
                 x="week",
                 y="applications",
                 title="Applications per Week",
+                text="applications",
             )
             weekly_fig.update_layout(xaxis_title="", yaxis_title="Applications")
+            _style_bar_labels(weekly_fig)
             st.plotly_chart(weekly_fig, use_container_width=True)
 
     with source_col:
@@ -150,8 +154,10 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
                 color="source",
                 title="Response Rate by Source",
                 hover_data=["applications", "responses"],
+                text="response_rate_label",
             )
             source_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Response rate (%)")
+            _style_bar_labels(source_fig)
             st.plotly_chart(source_fig, use_container_width=True)
 
     conversion_col, aging_col = st.columns(2)
@@ -170,8 +176,10 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
                 color="role_type",
                 title="Interview Conversion by Role Type",
                 hover_data=["applications", "interview_or_assessment"],
+                text="conversion_rate_label",
             )
             conversion_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Conversion rate (%)")
+            _style_bar_labels(conversion_fig)
             st.plotly_chart(conversion_fig, use_container_width=True)
 
     with aging_col:
@@ -186,8 +194,10 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
                 orientation="h",
                 title="Average Waiting Days by Company",
                 hover_data=["open_applications"],
+                text="average_waiting_days",
             )
             waiting_fig.update_layout(xaxis_title="Days", yaxis_title="")
+            _style_bar_labels(waiting_fig, texttemplate="%{text:.1f} days")
             st.plotly_chart(waiting_fig, use_container_width=True)
 
     stale_col, saved_col = st.columns(2)
@@ -202,8 +212,10 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
                 y="applications",
                 color="status",
                 title="Stale Pipeline Breakdown",
+                text="applications",
             )
             stale_fig.update_layout(xaxis_title="", yaxis_title="Open applications")
+            _style_bar_labels(stale_fig, position="auto")
             st.plotly_chart(stale_fig, use_container_width=True)
 
     with saved_col:
@@ -214,8 +226,10 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
             y="applications",
             color="stage",
             title="Saved vs Submitted",
+            text="applications",
         )
         saved_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Applications")
+        _style_bar_labels(saved_fig)
         st.plotly_chart(saved_fig, use_container_width=True)
 
     st.subheader("Recent Applications")
@@ -748,7 +762,17 @@ def _with_rate_percent(df: pd.DataFrame, rate_column: str) -> pd.DataFrame:
         return df
     formatted = df.copy()
     formatted[f"{rate_column}_percent"] = (formatted[rate_column] * 100).round(1)
+    formatted[f"{rate_column}_label"] = formatted[f"{rate_column}_percent"].map(_format_percent_label)
     return formatted
+
+
+def _style_bar_labels(fig: object, texttemplate: str = "%{text}", position: str = "outside") -> None:
+    fig.update_traces(texttemplate=texttemplate, textposition=position, cliponaxis=False)
+    fig.update_layout(uniformtext_minsize=10, uniformtext_mode="show")
+
+
+def _format_percent_label(value: object) -> str:
+    return f"{float(value):.0f}%"
 
 
 def _format_rate(value: object) -> str:
