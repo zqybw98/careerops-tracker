@@ -88,7 +88,7 @@ The MVP stores application records and traceability events in SQLite.
 | `event_type` | Event name such as `application_created`, `status_changed`, or `application_deleted`. |
 | `old_value` | Previous value or previous application summary. |
 | `new_value` | New value or new application summary. |
-| `source` | Actor/source such as `manual`, `csv_import`, `email_assistant`, `demo_data`, or `duplicate_cleanup`. |
+| `source` | Actor/source such as `manual`, `csv_import`, `dashboard_inline_edit`, `email_assistant`, `demo_data`, or `duplicate_cleanup`. |
 | `created_at` | UTC timestamp when the event was recorded. |
 
 The database is local and ignored by Git (`data/*.db`), so sample data and tests
@@ -96,8 +96,9 @@ can be shared without exposing personal job search records.
 
 ## Activity Logging
 
-Every create, update, delete, CSV sync import, email-assistant update, demo-data
-load, and duplicate-cleanup action can write an event to `application_events`.
+Every create, update, delete, CSV sync import, dashboard inline edit,
+email-assistant update, demo-data load, and duplicate-cleanup action can write
+an event to `application_events`.
 The application management view shows the selected record's activity log, which
 improves traceability and makes status changes auditable.
 

@@ -33,9 +33,42 @@ from src.email_templates import TEMPLATE_TYPES, generate_email_template, suggest
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
 from src.reminder_engine import generate_reminders
 
+DASHBOARD_EDITOR_COLUMNS = [
+    "#",
+    "company",
+    "role",
+    "location",
+    "application_date",
+    "status",
+    "next_action",
+    "follow_up_date",
+]
+
+DASHBOARD_EDITABLE_COLUMNS = [
+    "company",
+    "role",
+    "location",
+    "application_date",
+    "status",
+    "next_action",
+    "follow_up_date",
+]
+
 st.set_page_config(
     page_title="CareerOps Tracker",
     layout="wide",
+)
+
+st.markdown(
+    """
+    <style>
+    div[data-testid="stDataFrame"] div[role="gridcell"],
+    div[data-testid="stDataFrame"] div[role="columnheader"] {
+        font-size: 15px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
 
 init_db()
@@ -234,22 +267,42 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
 
     st.subheader("Recent Applications")
     display_df = _with_display_sequence(df)
-    st.dataframe(
-        display_df[
-            [
-                "#",
-                "company",
-                "role",
-                "location",
-                "application_date",
-                "status",
-                "next_action",
-                "follow_up_date",
-            ]
-        ],
+    render_dashboard_recent_editor(applications, display_df)
+
+
+def render_dashboard_recent_editor(applications: list[dict], display_df: pd.DataFrame) -> None:
+    editor_df = display_df[["id"] + DASHBOARD_EDITOR_COLUMNS].copy()
+    edited_df = st.data_editor(
+        editor_df,
         use_container_width=True,
         hide_index=True,
+        height=420,
+        row_height=34,
+        disabled=["id", "#"],
+        column_order=DASHBOARD_EDITOR_COLUMNS,
+        column_config={
+            "id": None,
+            "#": st.column_config.NumberColumn("#", width="small"),
+            "company": st.column_config.TextColumn("company", width="medium"),
+            "role": st.column_config.TextColumn("role", width="large"),
+            "location": st.column_config.TextColumn("location", width="small"),
+            "application_date": st.column_config.TextColumn("application_date", help="Use YYYY-MM-DD."),
+            "status": st.column_config.SelectboxColumn("status", options=STATUS_OPTIONS, width="medium"),
+            "next_action": st.column_config.TextColumn("next_action", width="large"),
+            "follow_up_date": st.column_config.TextColumn("follow_up_date", help="Use YYYY-MM-DD."),
+        },
+        key="dashboard_recent_applications_editor",
     )
+
+    save_col, helper_col = st.columns([1, 4])
+    if save_col.button("Save dashboard edits", key="save_dashboard_recent_edits"):
+        changed_count = _save_dashboard_editor_changes(applications, editor_df, edited_df)
+        if changed_count:
+            st.success(f"Saved changes for {changed_count} application(s).")
+            st.rerun()
+        else:
+            st.info("No dashboard table changes to save.")
+    helper_col.caption("Edit visible fields directly here. Detailed notes and rejection reasons stay in Applications.")
 
 
 def render_applications(applications: list[dict]) -> None:
@@ -777,6 +830,47 @@ def _with_display_sequence(df: pd.DataFrame) -> pd.DataFrame:
     ).reset_index(drop=True)
     sorted_df.insert(0, "#", range(1, len(sorted_df) + 1))
     return sorted_df
+
+
+def _save_dashboard_editor_changes(
+    applications: list[dict],
+    original_df: pd.DataFrame,
+    edited_df: pd.DataFrame,
+) -> int:
+    original_rows = {int(row["#"]): row for row in original_df.to_dict(orient="records")}
+    applications_by_id = {int(item["id"]): item for item in applications}
+    changed_count = 0
+
+    for row in edited_df.to_dict(orient="records"):
+        original = original_rows[int(row["#"])]
+        application_id = int(original["id"])
+        updates = {
+            column: _editor_value_to_text(row.get(column, ""))
+            for column in DASHBOARD_EDITABLE_COLUMNS
+            if _editor_value_to_text(row.get(column, "")) != _editor_value_to_text(original.get(column, ""))
+        }
+        if not updates:
+            continue
+
+        update_application(
+            application_id,
+            {**applications_by_id[application_id], **updates},
+            source="dashboard_inline_edit",
+        )
+        changed_count += 1
+
+    return changed_count
+
+
+def _editor_value_to_text(value: object) -> str:
+    if value is None:
+        return ""
+    try:
+        if pd.isna(value):
+            return ""
+    except TypeError:
+        pass
+    return str(value).strip()
 
 
 def _with_rate_percent(df: pd.DataFrame, rate_column: str) -> pd.DataFrame:

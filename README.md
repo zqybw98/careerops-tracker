@@ -23,6 +23,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails.
 - Keep an activity log for application creation, updates, imports, email-assistant actions, and cleanup.
 - View a Streamlit dashboard with application metrics and status charts.
+- Edit key application fields directly from the dashboard recent-applications table.
 - Analyze response rate by source, weekly application volume, role-type conversion, waiting days, and stale pipeline risk.
 - Load demo applications to preview the dashboard immediately after setup.
 - Import and export applications with CSV, including common English and Chinese headers.
