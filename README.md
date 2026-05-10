@@ -19,6 +19,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Extract company, role, contact, and source-link hints from pasted recruiting emails.
 - Suggest application status updates from email classification results.
 - Match recruiting emails to existing applications or create a new application from email context.
+- Optionally sync recent recruiting emails from Gmail with local read-only OAuth.
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
 - Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails.
 - Keep an activity log for application creation, updates, imports, email-assistant actions, and cleanup.
@@ -68,6 +69,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |-- app.py
 |-- requirements.txt
 |-- requirements-dev.txt
+|-- requirements-gmail.txt
 |-- pyproject.toml
 |-- .pre-commit-config.yaml
 |-- .streamlit/
@@ -85,6 +87,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- email_classifier.py
 |   |-- email_parser.py
 |   |-- email_templates.py
+|   |-- gmail_client.py
 |   |-- models.py
 |   `-- reminder_engine.py
 |-- tests/
@@ -95,6 +98,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- test_email_classifier.py
 |   |-- test_email_parser.py
 |   |-- test_email_templates.py
+|   |-- test_gmail_client.py
 |   `-- test_reminder_engine.py
 |-- samples/
 |   |-- sample_applications.csv
@@ -162,6 +166,25 @@ The app is ready for Streamlit Community Cloud.
 - Python version: `3.13`
 
 Full deployment steps are in [`docs/deployment.md`](docs/deployment.md).
+
+## Optional Gmail Sync
+
+Gmail sync is an optional local-only module. The hosted demo does not connect to
+your mailbox.
+
+Install optional Gmail dependencies:
+
+```bash
+pip install -r requirements-gmail.txt
+```
+
+Then create a Google OAuth desktop credential, save it locally as
+`credentials.json`, and open the Data tab. The first sync opens Google's OAuth
+screen and stores a local `token.json` for future runs.
+
+The app requests the read-only Gmail scope only and previews classified emails
+before applying any suggested application updates. `credentials.json` and
+`token.json` are ignored by Git.
 
 ## Example Workflow
 

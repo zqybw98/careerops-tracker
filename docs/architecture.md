@@ -47,6 +47,7 @@ flowchart LR
 | `src/email_classifier.py` | Rule-based recruiting email classification with confidence scores and suggested next actions. |
 | `src/email_parser.py` | Extracts company, role, contact, and source-link hints from pasted email text and matches existing records. |
 | `src/email_templates.py` | Generates rule-based follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails. |
+| `src/gmail_client.py` | Optional local Gmail API client that fetches read-only recruiting emails for preview classification. |
 | `src/reminder_engine.py` | Generates follow-up, interview, assessment, stale-application, and saved-role reminders. |
 | `src/demo_data.py` | Loads portfolio-friendly sample data from `samples/sample_applications.csv` without duplicates. |
 | `tests/` | Regression tests for persistence, email rules, reminder rules, and demo data loading. |
@@ -88,7 +89,7 @@ The MVP stores application records and traceability events in SQLite.
 | `event_type` | Event name such as `application_created`, `status_changed`, or `application_deleted`. |
 | `old_value` | Previous value or previous application summary. |
 | `new_value` | New value or new application summary. |
-| `source` | Actor/source such as `manual`, `csv_import`, `dashboard_inline_edit`, `email_assistant`, `demo_data`, or `duplicate_cleanup`. |
+| `source` | Actor/source such as `manual`, `csv_import`, `dashboard_inline_edit`, `email_assistant`, `gmail_sync`, `demo_data`, or `duplicate_cleanup`. |
 | `created_at` | UTC timestamp when the event was recorded. |
 
 The database is local and ignored by Git (`data/*.db`), so sample data and tests
@@ -97,8 +98,8 @@ can be shared without exposing personal job search records.
 ## Activity Logging
 
 Every create, update, delete, CSV sync import, dashboard inline edit,
-email-assistant update, demo-data load, and duplicate-cleanup action can write
-an event to `application_events`.
+email-assistant update, Gmail sync action, demo-data load, and duplicate-cleanup
+action can write an event to `application_events`.
 The application management view shows the selected record's activity log, which
 improves traceability and makes status changes auditable.
 
@@ -231,16 +232,17 @@ Pre-commit hooks run the same local quality gates before commits:
 
 ## Optional Gmail Module
 
-Gmail integration is intentionally outside the core MVP. A future Gmail module
-should be optional and isolated from the local workflow:
+Gmail integration is optional and isolated from the local workflow:
 
 ```text
-Gmail API -> email fetcher -> existing classifier -> suggested application update
+Gmail API -> read-only email fetcher -> existing classifier -> preview -> user-applied update
 ```
 
-The core app should continue to work with pasted email text even when Gmail
-credentials are not configured. This keeps setup simple for reviewers and avoids
-making personal mailbox access a requirement.
+The Gmail client uses `https://www.googleapis.com/auth/gmail.readonly`, stores
+OAuth files locally as `credentials.json` and `token.json`, and does not modify
+the mailbox. The core app continues to work with pasted email text when Gmail
+dependencies or credentials are not configured, which keeps the hosted demo and
+reviewer setup simple.
 
 ## Deployment Model
 

@@ -7,6 +7,10 @@ __pycache__/
 .mypy_cache/
 pytest-cache-files-*/
 .env
+credentials.json
+token.json
+gmail_credentials.json
+gmail_token.json
 data/*.db
 data/*.db-journal
 .streamlit/secrets.toml

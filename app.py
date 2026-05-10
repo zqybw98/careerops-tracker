@@ -30,6 +30,12 @@ from src.demo_data import seed_sample_applications
 from src.email_classifier import classify_email
 from src.email_parser import extract_application_details, match_application_from_email
 from src.email_templates import TEMPLATE_TYPES, generate_email_template, suggest_template_type
+from src.gmail_client import (
+    DEFAULT_GMAIL_QUERY,
+    GmailConfigurationError,
+    GmailDependencyError,
+    fetch_recruiting_emails,
+)
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
 from src.reminder_engine import generate_reminders
 
@@ -694,6 +700,8 @@ def render_data_tools(applications: list[dict]) -> None:
                     st.info("No duplicate records found.")
                 st.rerun()
 
+    render_gmail_sync_tools(applications)
+
     uploaded_file = st.file_uploader("Import applications from CSV", type=["csv"])
     if uploaded_file is not None:
         uploaded_df = pd.read_csv(uploaded_file, dtype=str).fillna("")
@@ -738,6 +746,75 @@ def render_data_tools(applications: list[dict]) -> None:
         "English and common Chinese headers are supported, "
         "for example 公司名称, 职位名称, 申请日期, 最新状态, 备注/来源."
     )
+
+
+def render_gmail_sync_tools(applications: list[dict]) -> None:
+    with st.expander("Optional Gmail recruiting email sync"):
+        st.caption(
+            "Local-only Gmail API sync. Uses read-only access and previews suggestions before changing applications."
+        )
+        query = st.text_input("Gmail search query", value=DEFAULT_GMAIL_QUERY, key="gmail_query")
+        max_results = st.number_input("Max emails", min_value=1, max_value=25, value=10, step=1, key="gmail_max")
+        col_credentials, col_token = st.columns(2)
+        credentials_path = col_credentials.text_input(
+            "OAuth credentials path",
+            value="credentials.json",
+            key="gmail_credentials_path",
+        )
+        token_path = col_token.text_input("Token path", value="token.json", key="gmail_token_path")
+
+        if st.button("Sync Gmail emails", key="gmail_sync_button"):
+            try:
+                emails = fetch_recruiting_emails(
+                    credentials_path=credentials_path,
+                    token_path=token_path,
+                    query=query,
+                    max_results=int(max_results),
+                )
+                st.session_state["gmail_sync_preview"] = _build_gmail_sync_preview(emails, applications)
+            except (GmailDependencyError, GmailConfigurationError) as error:
+                st.error(str(error))
+                st.info("Install optional dependencies with `pip install -r requirements-gmail.txt`.")
+
+        previews = st.session_state.get("gmail_sync_preview", [])
+        if not previews:
+            st.info("Sync Gmail to preview recruiting email classifications here.")
+            return
+
+        st.write(f"Previewed {len(previews)} email(s). Select rows to apply suggested updates.")
+        preview_df = _gmail_preview_display_df(previews)
+        edited_preview = st.data_editor(
+            preview_df,
+            use_container_width=True,
+            hide_index=True,
+            disabled=[
+                "index",
+                "subject",
+                "sender",
+                "category",
+                "confidence",
+                "suggested_status",
+                "company",
+                "role",
+                "matched_application",
+            ],
+            column_config={
+                "apply": st.column_config.CheckboxColumn("apply"),
+                "confidence": st.column_config.TextColumn("confidence"),
+                "subject": st.column_config.TextColumn("subject", width="large"),
+                "matched_application": st.column_config.TextColumn("matched_application", width="large"),
+            },
+            key="gmail_sync_preview_editor",
+        )
+
+        if st.button("Apply selected Gmail suggestions", key="gmail_apply_selected"):
+            apply_result = _apply_selected_gmail_suggestions(previews, edited_preview, applications)
+            st.success(
+                f"Applied Gmail suggestions: {apply_result['updated']} updated, "
+                f"{apply_result['created']} created, {apply_result['skipped']} skipped."
+            )
+            st.session_state["gmail_sync_preview"] = []
+            st.rerun()
 
 
 def render_activity_log(application_id: int) -> None:
@@ -798,6 +875,142 @@ def _build_email_note(result: dict, details: dict[str, str]) -> str:
     if extracted_parts:
         note_parts.append("Extracted " + "; ".join(extracted_parts))
     return " ".join(note_parts)
+
+
+def _build_gmail_sync_preview(emails: list[dict[str, str]], applications: list[dict]) -> list[dict]:
+    previews: list[dict] = []
+    for index, email in enumerate(emails, start=1):
+        subject = email.get("subject", "")
+        body = email.get("body", "")
+        result = classify_email(subject=subject, body=body)
+        details = extract_application_details(subject=subject, body=body)
+        match = match_application_from_email(
+            applications,
+            subject=subject,
+            body=body,
+            extracted_details=details,
+        )
+        previews.append(
+            {
+                "index": index,
+                "apply": False,
+                "gmail_id": email.get("gmail_id", ""),
+                "subject": subject,
+                "sender": email.get("sender", ""),
+                "date": email.get("date", ""),
+                "body": body,
+                "category": result["category"],
+                "confidence": result["confidence"],
+                "suggested_status": result["suggested_status"],
+                "suggested_next_action": result["suggested_next_action"],
+                "suggested_follow_up_days": result["suggested_follow_up_days"],
+                "matched_keywords": result["matched_keywords"],
+                "company": details.get("company", ""),
+                "role": details.get("role", ""),
+                "contact": details.get("contact", ""),
+                "source_link": details.get("source_link", ""),
+                "matched_application_id": int(match["application_id"]) if match else 0,
+                "matched_application": f"{match['company']} / {match['role']}" if match else "",
+                "details": details,
+                "classification": result,
+            }
+        )
+    return previews
+
+
+def _gmail_preview_display_df(previews: list[dict]) -> pd.DataFrame:
+    rows = []
+    for preview in previews:
+        rows.append(
+            {
+                "apply": preview["apply"],
+                "index": preview["index"],
+                "subject": preview["subject"],
+                "sender": preview["sender"],
+                "category": preview["category"],
+                "confidence": f"{preview['confidence']:.0%}",
+                "suggested_status": preview["suggested_status"],
+                "company": preview["company"],
+                "role": preview["role"],
+                "matched_application": preview["matched_application"],
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _apply_selected_gmail_suggestions(
+    previews: list[dict],
+    edited_preview: pd.DataFrame,
+    applications: list[dict],
+) -> dict[str, int]:
+    selected_indexes = {int(row["index"]) for row in edited_preview.to_dict(orient="records") if bool(row.get("apply"))}
+    preview_by_index = {int(preview["index"]): preview for preview in previews}
+    result = {"updated": 0, "created": 0, "skipped": 0}
+
+    for index in selected_indexes:
+        preview = preview_by_index[index]
+        action = _apply_gmail_preview(preview, applications)
+        result[action] += 1
+    return result
+
+
+def _apply_gmail_preview(preview: dict, applications: list[dict]) -> str:
+    if preview["matched_application_id"]:
+        selected = next(item for item in applications if int(item["id"]) == int(preview["matched_application_id"]))
+        follow_up_date = selected.get("follow_up_date", "")
+        if preview["suggested_follow_up_days"] is not None:
+            follow_up_date = (date.today() + timedelta(days=int(preview["suggested_follow_up_days"]))).isoformat()
+
+        rejection_reason = selected.get("rejection_reason", "")
+        if preview["suggested_status"] == "Rejected" and not rejection_reason:
+            rejection_reason = "Rejected based on Gmail recruiting email."
+
+        update_application(
+            int(selected["id"]),
+            {
+                **selected,
+                "status": preview["suggested_status"],
+                "contact": selected.get("contact", "") or preview.get("contact", ""),
+                "source_link": selected.get("source_link", "") or preview.get("source_link", ""),
+                "next_action": preview["suggested_next_action"],
+                "follow_up_date": follow_up_date,
+                "notes": _append_note(selected.get("notes", ""), _build_gmail_note(preview)),
+                "rejection_reason": rejection_reason,
+            },
+            source="gmail_sync",
+        )
+        return "updated"
+
+    if not preview.get("company") or not preview.get("role"):
+        return "skipped"
+
+    create_application(
+        {
+            "company": preview["company"],
+            "role": preview["role"],
+            "location": "",
+            "application_date": date.today().isoformat(),
+            "status": preview["suggested_status"],
+            "source_link": preview.get("source_link", ""),
+            "contact": preview.get("contact", ""),
+            "notes": _build_gmail_note(preview),
+            "rejection_reason": "Rejected based on Gmail recruiting email."
+            if preview["suggested_status"] == "Rejected"
+            else "",
+            "next_action": preview["suggested_next_action"],
+            "follow_up_date": "",
+        },
+        source="gmail_sync",
+    )
+    return "created"
+
+
+def _build_gmail_note(preview: dict) -> str:
+    note = _build_email_note(preview["classification"], preview["details"])
+    subject = str(preview.get("subject", "")).strip()
+    sender = str(preview.get("sender", "")).strip()
+    metadata = " | ".join(value for value in [f"Gmail subject: {subject}" if subject else "", sender] if value)
+    return _append_note(note, metadata) if metadata else note
 
 
 def _append_note(existing_notes: str, new_note: str) -> str:
