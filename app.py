@@ -60,6 +60,8 @@ DASHBOARD_EDITABLE_COLUMNS = [
     "follow_up_date",
 ]
 
+WORKSPACE_OPTIONS = ["Overview", "Applications", "Assistant", "Data & Settings"]
+
 st.set_page_config(
     page_title="CareerOps Tracker",
     layout="wide",
@@ -129,7 +131,8 @@ def render_sidebar_navigation(applications: list[dict], reminders: list[dict]) -
         st.caption("Job search operations tracker")
         workspace = st.radio(
             "Workspace",
-            ["Overview", "Applications", "Assistant", "Data & Settings"],
+            WORKSPACE_OPTIONS,
+            key="workspace_nav",
             label_visibility="collapsed",
         )
         st.divider()
@@ -172,7 +175,15 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
 
     df = pd.DataFrame(applications)
 
-    st.subheader("Recent Applications")
+    recent_title_col, recent_action_col = st.columns([4, 1])
+    recent_title_col.subheader("Recent Applications")
+    recent_action_col.button(
+        "Add application",
+        key="dashboard_add_application",
+        type="primary",
+        use_container_width=True,
+        on_click=_go_to_applications_workspace,
+    )
     display_df = _with_display_sequence(df)
     render_dashboard_recent_editor(applications, display_df)
     st.divider()
@@ -323,6 +334,10 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
         saved_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Applications")
         _style_bar_labels(saved_fig)
         st.plotly_chart(saved_fig, use_container_width=True)
+
+
+def _go_to_applications_workspace() -> None:
+    st.session_state["workspace_nav"] = "Applications"
 
 
 def render_dashboard_recent_editor(applications: list[dict], display_df: pd.DataFrame) -> None:
