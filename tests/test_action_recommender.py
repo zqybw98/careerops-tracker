@@ -105,6 +105,7 @@ def test_workflow_decision_closes_rejected_application() -> None:
     assert decision["review_level"] == "Low"
     assert decision["status_action"] == "Applied -> Rejected"
     assert decision["primary_action_label"] == "Apply rejection update"
+    assert decision["status_update_allowed"] is True
 
 
 def test_workflow_decision_requires_confirmation_for_candidate_match() -> None:
@@ -132,6 +133,7 @@ def test_workflow_decision_requires_confirmation_for_candidate_match() -> None:
     assert decision["operation"] == "Confirm match"
     assert decision["review_level"] == "Medium"
     assert decision["status_action"] == "Applied -> Confirmation Received"
+    assert decision["status_update_allowed"] is True
 
 
 def test_workflow_decision_uses_manual_review_for_low_confidence_email() -> None:
@@ -156,6 +158,8 @@ def test_workflow_decision_uses_manual_review_for_low_confidence_email() -> None
     assert decision["operation"] == "Manual review"
     assert decision["review_level"] == "High"
     assert decision["status_action"] == "Keep Applied"
+    assert decision["status_update_allowed"] is False
+    assert decision["primary_action_label"] == "Status update disabled"
 
 
 def test_workflow_decision_can_create_application_from_email_context() -> None:
@@ -171,3 +175,4 @@ def test_workflow_decision_can_create_application_from_email_context() -> None:
 
     assert decision["operation"] == "Create application"
     assert decision["status_action"] == "Create as Interview Scheduled"
+    assert decision["status_update_allowed"] is True

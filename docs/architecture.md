@@ -171,6 +171,9 @@ rejection, or create a new record. It then prioritizes actions such as interview
 preparation, assessment submission, recruiter replies, rejection review, or
 scheduled follow-up. Each recommendation includes priority, review level,
 follow-up date, template type, rationale, and explicit record/status actions.
+Status updates pass through a confidence gate: `>= 85%` is ready after quick
+review, `60% - 84%` requires explicit user confirmation, and `< 60%` blocks
+status updates so the user can only save a task or review manually.
 
 ## Email Template Generation
 

@@ -30,6 +30,7 @@ from src.database import (
 from src.demo_data import seed_sample_applications
 from src.email_classifier import classify_email
 from src.email_insights import (
+    build_confidence_threshold_rows,
     build_context_rows,
     build_email_analysis_summary,
     build_keyword_rows,
@@ -37,6 +38,7 @@ from src.email_insights import (
     build_match_reason_rows,
     build_match_signal_rows,
     build_workflow_steps,
+    confidence_gate,
 )
 from src.email_parser import (
     extract_application_details,
@@ -638,6 +640,8 @@ def render_email_assistant(applications: list[dict]) -> None:
         st.write("Record action:", workflow_decision["record_action"])
         st.write("Status action:", workflow_decision["status_action"])
         st.caption("Why: " + workflow_decision["rationale"])
+        if not workflow_decision["status_update_allowed"]:
+            st.warning("Status update is disabled because the email is below the confidence threshold.")
         st.dataframe(
             pd.DataFrame(
                 build_workflow_steps(
@@ -664,7 +668,10 @@ def render_email_assistant(applications: list[dict]) -> None:
             st.success("Next action applied to the selected application.")
             st.rerun()
 
-        if status_col.button(workflow_decision["primary_action_label"]):
+        if status_col.button(
+            workflow_decision["primary_action_label"],
+            disabled=not workflow_decision["status_update_allowed"],
+        ):
             _update_application_from_email_action(
                 selected_id,
                 selected,
@@ -752,16 +759,25 @@ def render_email_analysis_report(
 ) -> None:
     summary = build_email_analysis_summary(result, details, match, candidate_count=len(match_candidates))
     classification_confidence = float(result.get("confidence") or 0)
+    gate = confidence_gate(classification_confidence)
 
     st.subheader("Email Analysis")
     with st.container(border=True):
-        summary_cols = st.columns(4)
+        summary_cols = st.columns(5)
         summary_cols[0].metric("Email type", result["category"])
         summary_cols[1].metric("Confidence", summary["confidence_label"], f"{classification_confidence:.0%}")
-        summary_cols[2].metric("Suggested status", result["suggested_status"])
-        summary_cols[3].metric("Context fields", summary["detected_context"])
+        summary_cols[2].metric("Gate", gate["gate"])
+        summary_cols[3].metric("Suggested status", result["suggested_status"])
+        summary_cols[4].metric("Context fields", summary["detected_context"])
         st.caption(summary["confidence_description"])
+        st.caption(f"Threshold rule: {gate['threshold']} - {gate['allowed_action']}.")
         st.info(summary["decision"])
+        with st.expander("Confidence threshold rules"):
+            st.dataframe(
+                pd.DataFrame(build_confidence_threshold_rows()),
+                use_container_width=True,
+                hide_index=True,
+            )
 
     evidence_col, context_col = st.columns([1, 1])
     with evidence_col:

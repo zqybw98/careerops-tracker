@@ -1,10 +1,12 @@
 from src.email_insights import (
+    build_confidence_threshold_rows,
     build_context_rows,
     build_email_analysis_summary,
     build_match_candidate_rows,
     build_match_signal_rows,
     build_workflow_steps,
     confidence_band,
+    confidence_gate,
     detected_context_count,
 )
 
@@ -13,6 +15,20 @@ def test_confidence_band_labels() -> None:
     assert confidence_band(0.9)["label"] == "High"
     assert confidence_band(0.7)["label"] == "Medium"
     assert confidence_band(0.4)["label"] == "Low"
+
+
+def test_confidence_gate_enforces_thresholds() -> None:
+    assert confidence_gate(0.9)["gate"] == "Ready"
+    assert confidence_gate(0.7)["gate"] == "Review required"
+    assert confidence_gate(0.4)["gate"] == "Blocked"
+
+
+def test_builds_confidence_threshold_rows() -> None:
+    rows = build_confidence_threshold_rows()
+
+    assert rows[0]["Threshold"] == ">= 85%"
+    assert rows[1]["Threshold"] == "60% - 84%"
+    assert rows[2]["Workflow rule"] == "Block status update; save task only"
 
 
 def test_builds_analysis_summary_with_match() -> None:

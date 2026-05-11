@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+HIGH_CONFIDENCE_THRESHOLD = 0.85
+MEDIUM_CONFIDENCE_THRESHOLD = 0.6
+
 CONTEXT_FIELDS: tuple[tuple[str, str, str], ...] = (
     ("Company", "company", "Application identity"),
     ("Role", "role", "Application identity"),
@@ -67,12 +70,12 @@ def build_email_analysis_summary(
 
 def confidence_band(value: object) -> dict[str, str]:
     confidence = _coerce_float(value, default=0.0)
-    if confidence >= 0.85:
+    if confidence >= HIGH_CONFIDENCE_THRESHOLD:
         return {
             "label": "High",
             "description": "Strong evidence. The suggestion is likely ready to apply after a quick review.",
         }
-    if confidence >= 0.6:
+    if confidence >= MEDIUM_CONFIDENCE_THRESHOLD:
         return {
             "label": "Medium",
             "description": "Useful evidence, but the user should review the extracted context before applying changes.",
@@ -81,6 +84,50 @@ def confidence_band(value: object) -> dict[str, str]:
         "label": "Low",
         "description": "Limited evidence. Treat this as a manual review candidate.",
     }
+
+
+def confidence_gate(value: object) -> dict[str, str]:
+    confidence = _coerce_float(value, default=0.0)
+    if confidence >= HIGH_CONFIDENCE_THRESHOLD:
+        return {
+            "gate": "Ready",
+            "threshold": ">= 85%",
+            "allowed_action": "Allow status update after quick review",
+            "requires": "Check extracted fields and matched application",
+        }
+    if confidence >= MEDIUM_CONFIDENCE_THRESHOLD:
+        return {
+            "gate": "Review required",
+            "threshold": "60% - 84%",
+            "allowed_action": "Require explicit user confirmation",
+            "requires": "Review extracted fields, match, and workflow action",
+        }
+    return {
+        "gate": "Blocked",
+        "threshold": "< 60%",
+        "allowed_action": "Disable status update; save task only",
+        "requires": "Manual review before changing application status",
+    }
+
+
+def build_confidence_threshold_rows() -> list[dict[str, str]]:
+    return [
+        {
+            "Band": "High",
+            "Threshold": ">= 85%",
+            "Workflow rule": "Ready to apply after quick review",
+        },
+        {
+            "Band": "Medium",
+            "Threshold": "60% - 84%",
+            "Workflow rule": "Require explicit confirmation",
+        },
+        {
+            "Band": "Low",
+            "Threshold": "< 60%",
+            "Workflow rule": "Block status update; save task only",
+        },
+    ]
 
 
 def detected_context_count(details: dict[str, str]) -> int:
@@ -168,7 +215,7 @@ def build_workflow_steps(
     classification: dict[str, Any],
     recommendation: dict[str, str],
     has_match: bool,
-    workflow_decision: dict[str, str] | None = None,
+    workflow_decision: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     steps = [
         {
@@ -221,7 +268,7 @@ def _summarize_reasons(match: dict[str, Any]) -> str:
     return "; ".join(reasons[:3])
 
 
-def _workflow_step_two(workflow_decision: dict[str, str] | None, has_match: bool) -> str:
+def _workflow_step_two(workflow_decision: dict[str, Any] | None, has_match: bool) -> str:
     if workflow_decision and workflow_decision.get("record_action"):
-        return workflow_decision["record_action"]
+        return str(workflow_decision["record_action"])
     return "Confirm the matched application" if has_match else "Select an application or create a new record"

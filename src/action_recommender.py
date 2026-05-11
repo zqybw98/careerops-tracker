@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from src.email_insights import MEDIUM_CONFIDENCE_THRESHOLD
 from src.models import CLOSED_STATUSES
 
 
@@ -11,7 +12,7 @@ def build_next_action_recommendation(
     details: dict[str, str],
     application: dict[str, Any] | None = None,
     today: date | None = None,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     current_date = today or date.today()
     status = str(classification.get("suggested_status") or "Applied")
     category = str(classification.get("category") or "Other")
@@ -105,7 +106,7 @@ def build_workflow_decision(
     application: dict[str, Any] | None = None,
     auto_match: dict[str, Any] | None = None,
     match_candidates: list[dict[str, Any]] | None = None,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     confidence = _confidence(classification)
     category = str(classification.get("category") or "Other")
     suggested_status = str(classification.get("suggested_status") or "Applied")
@@ -113,14 +114,15 @@ def build_workflow_decision(
     candidate_count = len(match_candidates or [])
     has_extracted_record = bool(details.get("company") and details.get("role"))
 
-    if confidence < 0.6 or category == "Other":
+    if confidence < MEDIUM_CONFIDENCE_THRESHOLD or category == "Other":
         return {
             "operation": "Manual review",
             "review_level": "High",
             "record_action": "Review the email before changing a record.",
             "status_action": _status_action_text(current_status, current_status or suggested_status),
-            "primary_action_label": "Save reviewed update",
+            "primary_action_label": "Status update disabled",
             "secondary_action_label": "Save next action only",
+            "status_update_allowed": False,
             "decision": "The email evidence is weak, so the safest next step is manual review.",
             "rationale": "Low-confidence or unknown emails should not drive automatic workflow changes.",
         }
@@ -134,6 +136,7 @@ def build_workflow_decision(
                 "status_action": f"Create as {suggested_status}",
                 "primary_action_label": "Create application from email",
                 "secondary_action_label": "Review extracted fields",
+                "status_update_allowed": True,
                 "decision": (
                     "No existing application was selected, but the email contains enough context to create one."
                 ),
@@ -146,6 +149,7 @@ def build_workflow_decision(
             "status_action": "No status change",
             "primary_action_label": "Review manually",
             "secondary_action_label": "Add missing fields",
+            "status_update_allowed": False,
             "decision": "The email does not contain enough structured context to create or update a record.",
             "rationale": "A reliable application record needs at least company and role.",
         }
@@ -158,6 +162,7 @@ def build_workflow_decision(
             "status_action": _status_action_text(current_status, suggested_status),
             "primary_action_label": "Apply to selected application",
             "secondary_action_label": "Save next action only",
+            "status_update_allowed": True,
             "decision": "The assistant found possible matches, but none were strong enough for automatic selection.",
             "rationale": "A human confirmation step reduces the risk of updating the wrong application.",
         }
@@ -170,6 +175,7 @@ def build_workflow_decision(
             "status_action": _status_action_text(current_status, "Rejected"),
             "primary_action_label": "Apply rejection update",
             "secondary_action_label": "Save rejection note only",
+            "status_update_allowed": True,
             "decision": "The email indicates a rejection, so the application should be closed with context preserved.",
             "rationale": "Rejected emails are terminal workflow events and are valuable for later review.",
         }
@@ -182,6 +188,7 @@ def build_workflow_decision(
             "status_action": _status_action_text(current_status, "Interview Scheduled"),
             "primary_action_label": "Apply interview update",
             "secondary_action_label": "Save preparation task only",
+            "status_update_allowed": True,
             "decision": "The email indicates an interview step, so preparation and scheduling are the next priority.",
             "rationale": "Interview invitations are high-value workflow events with time-sensitive preparation work.",
         }
@@ -194,6 +201,7 @@ def build_workflow_decision(
             "status_action": _status_action_text(current_status, "Assessment"),
             "primary_action_label": "Apply assessment update",
             "secondary_action_label": "Save deadline task only",
+            "status_update_allowed": True,
             "decision": "The email contains an assessment step, so deadline tracking is the safest next action.",
             "rationale": "Assessment emails usually create a time-bound task.",
         }
@@ -206,6 +214,7 @@ def build_workflow_decision(
             "status_action": _status_action_text(current_status, "Confirmation Received"),
             "primary_action_label": "Apply confirmation update",
             "secondary_action_label": "Save follow-up only",
+            "status_update_allowed": True,
             "decision": "The email confirms receipt, so the useful action is waiting plus scheduled follow-up.",
             "rationale": "Confirmation emails rarely need a reply, but they should start a follow-up timer.",
         }
@@ -218,6 +227,7 @@ def build_workflow_decision(
             "status_action": _status_action_text(current_status, "Follow-up Needed"),
             "primary_action_label": "Apply reply-needed update",
             "secondary_action_label": "Save reply task only",
+            "status_update_allowed": True,
             "decision": "The email appears to require a response, so the next step is a recruiter reply task.",
             "rationale": "Recruiter messages often need human-written responses before a status change is final.",
         }
@@ -230,6 +240,7 @@ def build_workflow_decision(
             "status_action": _status_action_text(current_status, suggested_status),
             "primary_action_label": "Refresh application task",
             "secondary_action_label": "Save next action only",
+            "status_update_allowed": True,
             "decision": "The status is already aligned, so only the action details need to be updated.",
             "rationale": "Avoid unnecessary status churn when the application is already in the suggested stage.",
         }
@@ -241,6 +252,7 @@ def build_workflow_decision(
         "status_action": _status_action_text(current_status, suggested_status),
         "primary_action_label": "Apply recommended update",
         "secondary_action_label": "Save next action only",
+        "status_update_allowed": True,
         "decision": recommendation.get("next_action", "Update the selected application based on this email."),
         "rationale": recommendation.get("rationale", "The email classification suggests a workflow update."),
     }
