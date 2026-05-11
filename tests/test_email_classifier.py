@@ -32,6 +32,36 @@ def test_classifies_application_confirmation() -> None:
     assert result["suggested_status"] == "Confirmation Received"
 
 
+def test_classifies_german_rejection_email() -> None:
+    result = classify_email(
+        subject="Ihre Bewerbung als Werkstudent Konstruktion",
+        body="Leider müssen wir Ihnen mitteilen, dass wir Ihre Bewerbung nicht weiter berücksichtigen können.",
+    )
+
+    assert result["category"] == "Rejection"
+    assert result["suggested_status"] == "Rejected"
+
+
+def test_classifies_chinese_interview_invitation() -> None:
+    result = classify_email(
+        subject="面试邀请：软件测试实习生",
+        body="我们想邀请您参加视频面试，请告知方便时间。",
+    )
+
+    assert result["category"] == "Interview Invitation"
+    assert result["suggested_status"] == "Interview Scheduled"
+
+
+def test_classifies_chinese_application_confirmation() -> None:
+    result = classify_email(
+        subject="申请已收到",
+        body="感谢您的申请，我们已收到您的申请材料。",
+    )
+
+    assert result["category"] == "Application Confirmation"
+    assert result["suggested_status"] == "Confirmation Received"
+
+
 def test_unknown_email_returns_other() -> None:
     result = classify_email(subject="Newsletter", body="Here are this week's articles.")
 

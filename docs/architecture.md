@@ -28,7 +28,7 @@ flowchart LR
 ```
 
 1. The user works through four sidebar workspaces: Overview, Applications,
-   Assistant, and Data & Settings.
+   Email Assistant, and Data & Settings.
 2. The user adds or imports application records in the Streamlit interface.
 3. The app stores records in a local SQLite database under `data/`.
 4. The dashboard reads application records and builds pipeline metrics.
@@ -133,6 +133,8 @@ Closed statuses are `Rejected` and `Offer`; the reminder engine skips these.
 
 The classifier is rule-based rather than ML-based. This is deliberate for the
 MVP because recruiting email patterns are repetitive and explainability matters.
+It includes English, German, and Chinese recruiting phrases for the most common
+workflow categories.
 
 Each rule contains:
 

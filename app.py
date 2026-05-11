@@ -61,7 +61,7 @@ DASHBOARD_EDITABLE_COLUMNS = [
     "follow_up_date",
 ]
 
-WORKSPACE_OPTIONS = ["Overview", "Applications", "Assistant", "Data & Settings"]
+WORKSPACE_OPTIONS = ["Overview", "Applications", "Email Assistant", "Data & Settings"]
 
 st.set_page_config(
     page_title="CareerOps Tracker",
@@ -120,7 +120,7 @@ def main() -> None:
         render_dashboard(applications, reminders)
     elif workspace == "Applications":
         render_applications(applications)
-    elif workspace == "Assistant":
+    elif workspace == "Email Assistant":
         render_assistant_workspace(applications)
     else:
         render_data_tools(applications)
@@ -130,6 +130,8 @@ def render_sidebar_navigation(applications: list[dict], reminders: list[dict]) -
     with st.sidebar:
         st.title("CareerOps")
         st.caption("Job search operations tracker")
+        if st.session_state.get("workspace_nav") == "Assistant":
+            st.session_state["workspace_nav"] = "Email Assistant"
         workspace = st.radio(
             "Workspace",
             WORKSPACE_OPTIONS,

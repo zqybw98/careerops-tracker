@@ -64,6 +64,16 @@ COMMON_LOCATIONS = [
     "Bonn",
     "Remote",
     "Hybrid",
+    "Germany",
+    "Deutschland",
+    "柏林",
+    "慕尼黑",
+    "汉堡",
+    "德国",
+    "远程",
+    "混合办公",
+    "北京",
+    "上海",
 ]
 
 MONTH_LOOKUP = {
@@ -115,6 +125,9 @@ DEADLINE_KEYWORDS = (
     "spätestens",
     "spaetestens",
     "frist",
+    "截止",
+    "截止日期",
+    "请于",
 )
 
 INTERVIEW_DATE_KEYWORDS = (
@@ -128,6 +141,9 @@ INTERVIEW_DATE_KEYWORDS = (
     "technical interview",
     "teams",
     "zoom",
+    "面试",
+    "电话面试",
+    "视频面试",
 )
 
 
@@ -266,11 +282,13 @@ def _score_application_match(
 
 def _extract_company(text: str) -> str:
     patterns = [
+        r"(?:公司|企业|雇主)\s*[:：]\s*([^\n\r|,.;:<>，。；：]{1,80})",
+        r"(?:firma|unternehmen|arbeitgeber)\s*[:：]\s*([^\n\r|,.;:<>]{1,80})",
         r"(?:company|employer|arbeitgeber|unternehmen)\s*:\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß0-9&.+\- ]{1,60})",
         r"(?:applying|applied|application)\s+(?:to|at)\s+([A-Z][A-Za-z0-9&.+\- ]{1,60})",
         r"(?:position|role|job)\s+(?:at|with)\s+([A-Z][A-Za-z0-9&.+\- ]{1,60})",
         r"(?:interview|assessment|application).{0,80}\s+at\s+([A-Z][A-Za-z0-9&.+\- ]{1,60})",
-        r"from:\s?.*?@([A-Za-z0-9.-]+\.[A-Za-z]{2,})",
+        r"(?:from|von|发件人)\s*[:：]?.*?@([A-Za-z0-9.-]+\.[A-Za-z]{2,})",
     ]
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.IGNORECASE)
@@ -395,6 +413,9 @@ def _infer_email_intent(normalized_email_text: str, details: dict[str, str]) -> 
 
 def _extract_role(text: str) -> str:
     patterns = [
+        r"(?:职位|岗位|申请职位|应聘岗位)\s*[:：]\s*(.{3,120})",
+        r"(?:bewerbung|ihre bewerbung)\s+(?:als|für|fuer|um)\s+(.{3,120})",
+        r"(?:stelle|position|rolle|job)\s*[:：]\s*(.{3,120})",
         r"(?:role|position|job title|stelle|positionstitel)\s*:\s*(.{3,120})",
         r"(?:application|applied)\s+(?:for|as)\s+(.{3,120})",
         r"(?:position|role|job)\s+(?:of|as|for)\s+(.{3,120})",
@@ -411,7 +432,7 @@ def _extract_role(text: str) -> str:
 
 
 def _extract_contact(text: str) -> str:
-    from_match = re.search(r"from:\s*([^\n<]+<[^>]+>|[^\n]+)", text, flags=re.IGNORECASE)
+    from_match = re.search(r"(?:from|sender|von|发件人)\s*[:：]\s*([^\n<]+<[^>]+>|[^\n]+)", text, flags=re.IGNORECASE)
     if from_match:
         return _trim_contact(from_match.group(1))
 
@@ -421,6 +442,8 @@ def _extract_contact(text: str) -> str:
 
 def _extract_location(text: str) -> str:
     patterns = [
+        r"(?:地点|城市|工作地点|办公地点)\s*[:：]\s*([^\n\r|,.;:<>，。；：]{2,60})",
+        r"(?:standort|arbeitsort|ort|stadt)\s*[:：]\s*([^\n\r|,.;:<>]{2,60})",
         r"(?:location|standort|ort|city)\s*:\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß .\-]{2,60})",
         r"(?:office|büro|buero)\s+(?:in|at)\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß .\-]{2,60})",
     ]
@@ -499,22 +522,52 @@ def _extract_context_date(text: str, keywords: tuple[str, ...]) -> str:
         window_start = max(0, start - 100)
         context = text[window_start : min(len(text), end + 100)].casefold()
         for keyword in keywords:
-            keyword_match = re.search(rf"\b{re.escape(keyword.casefold())}\b", context)
-            if keyword_match:
-                keyword_position = window_start + keyword_match.start()
-                distance = min(abs(keyword_position - start), abs(keyword_position - end))
+            keyword_position_in_context = _keyword_position(context, keyword.casefold())
+            if keyword_position_in_context is not None:
+                keyword_position = window_start + keyword_position_in_context
+                distance = start - keyword_position if keyword_position <= start else keyword_position - end + 50
                 candidates.append((distance, start, iso_date))
 
     return sorted(candidates)[0][2] if candidates else ""
 
 
+def _keyword_position(text: str, keyword: str) -> int | None:
+    if re.search(r"[^\x00-\x7F]", keyword):
+        position = text.find(keyword)
+        return position if position >= 0 else None
+
+    keyword_match = re.search(rf"\b{re.escape(keyword)}\b", text)
+    return keyword_match.start() if keyword_match else None
+
+
 def _extract_rejection_reason(text: str) -> str:
     normalized = _normalize_text(text)
     reason_rules = [
-        ("Position closed or filled.", ("position has been filled", "position is filled", "position closed")),
+        (
+            "Position closed or filled.",
+            (
+                "position has been filled",
+                "position is filled",
+                "position closed",
+                "stelle wurde besetzt",
+                "stelle ist besetzt",
+                "职位已关闭",
+                "岗位已关闭",
+                "岗位已招满",
+            ),
+        ),
         (
             "Other candidates were selected.",
-            ("other candidates", "another candidate", "more suitable candidates", "more closely match"),
+            (
+                "other candidates",
+                "another candidate",
+                "more suitable candidates",
+                "more closely match",
+                "anderen bewerber",
+                "andere kandidaten",
+                "更合适的候选人",
+                "其他候选人",
+            ),
         ),
         (
             "Experience mismatch.",
@@ -523,10 +576,19 @@ def _extract_rejection_reason(text: str) -> str:
                 "not enough experience",
                 "experience does not match",
                 "does not meet our requirements",
+                "erfahrung entspricht nicht",
+                "经验不匹配",
+                "经验不足",
             ),
         ),
-        ("Language requirement mismatch.", ("german language", "language requirements", "sprachkenntnisse")),
-        ("Visa or work authorization mismatch.", ("visa", "work permit", "work authorization", "arbeitserlaubnis")),
+        (
+            "Language requirement mismatch.",
+            ("german language", "language requirements", "sprachkenntnisse", "德语要求", "语言要求"),
+        ),
+        (
+            "Visa or work authorization mismatch.",
+            ("visa", "work permit", "work authorization", "arbeitserlaubnis", "签证", "工作许可"),
+        ),
     ]
     for reason, patterns in reason_rules:
         if any(pattern in normalized for pattern in patterns):
@@ -538,8 +600,17 @@ def _extract_rejection_reason(text: str) -> str:
         "not moving forward",
         "decided not to continue",
         "we regret",
+        "nicht berücksichtigen",
+        "nicht in die engere auswahl",
+        "bewerbung nicht weiter",
         "leider",
         "absage",
+        "很遗憾",
+        "遗憾",
+        "未能",
+        "不予考虑",
+        "无法继续",
+        "未通过",
     )
     for sentence in _split_sentences(text):
         if any(keyword in sentence.casefold() for keyword in rejection_keywords):
@@ -576,6 +647,11 @@ def _find_dates(text: str) -> list[tuple[str, int, int]]:
             MONTH_LOOKUP[match.group(1).casefold()],
             int(match.group(2)),
         )
+        if iso_date:
+            matches.append((iso_date, match.start(), match.end()))
+
+    for match in re.finditer(r"(20\d{2})年(\d{1,2})月(\d{1,2})日?", text):
+        iso_date = _safe_iso_date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
         if iso_date:
             matches.append((iso_date, match.start(), match.end()))
 
@@ -618,7 +694,7 @@ def _trim_role(value: str) -> str:
         maxsplit=1,
         flags=re.IGNORECASE,
     )[0]
-    candidate = re.split(r"[\n\r.;]", candidate, maxsplit=1)[0]
+    candidate = re.split(r"[\n\r.;。；]", candidate, maxsplit=1)[0]
     candidate = re.sub(r"\s+", " ", candidate).strip(" -")
     return candidate[:120]
 
@@ -629,7 +705,7 @@ def _trim_sentence(value: str) -> str:
 
 
 def _split_sentences(text: str) -> list[str]:
-    return [part.strip() for part in re.split(r"(?<=[.!?])\s+|\n+", text) if part.strip()]
+    return [part.strip() for part in re.split(r"(?<=[.!?。！？])\s*|\n+", text) if part.strip()]
 
 
 def _contains_phrase(text: str, phrase: str) -> bool:

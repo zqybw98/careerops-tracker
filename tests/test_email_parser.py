@@ -59,6 +59,43 @@ def test_extracts_rejection_reason_from_email_text() -> None:
     assert details["rejection_reason"] == "Position closed or filled."
 
 
+def test_extracts_german_role_from_bewerbung_subject() -> None:
+    details = extract_application_details(
+        subject="Ihre Bewerbung als Werkstudent Konstruktion & Betriebsmittelmanagement (m/w/d)",
+        body=(
+            "Von: MELAG Recruiting <notification@melag.com>\n"
+            "Standort: Berlin\n"
+            "Nach sorgfältiger Prüfung Ihrer Unterlagen müssen wir Ihnen leider mitteilen, "
+            "dass wir Sie bei der Besetzung der ausgeschriebenen Stelle nicht berücksichtigen können."
+        ),
+    )
+
+    assert details["company"] == "Melag"
+    assert details["role"] == "Werkstudent Konstruktion & Betriebsmittelmanagement (m/w/d)"
+    assert details["location"] == "Berlin"
+    assert "nicht berücksichtigen" in details["rejection_reason"]
+
+
+def test_extracts_chinese_application_context_fields() -> None:
+    details = extract_application_details(
+        subject="面试邀请：软件测试实习生",
+        body=(
+            "发件人：招聘团队 <jobs@example.cn>\n"
+            "公司：示例科技\n"
+            "职位：软件测试实习生\n"
+            "工作地点：上海\n"
+            "我们邀请您参加视频面试，面试时间为2026年5月15日。请于2026年5月13日前确认。"
+        ),
+    )
+
+    assert details["company"] == "示例科技"
+    assert details["role"] == "软件测试实习生"
+    assert details["location"] == "上海"
+    assert details["contact"] == "招聘团队 <jobs@example.cn>"
+    assert details["interview_date"] == "2026-05-15"
+    assert details["deadline"] == "2026-05-13"
+
+
 def test_matches_existing_application_from_email_context() -> None:
     applications = [
         {

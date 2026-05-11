@@ -38,8 +38,17 @@ CATEGORY_RULES: list[CategoryRule] = [
             "technical interview",
             "would like to meet",
             "availability for a call",
+            "vorstellungsgespräch",
+            "bewerbungsgespräch",
+            "gespräch",
             "gespraech",
+            "telefoninterview",
             "interview",
+            "面试",
+            "面试邀请",
+            "视频面试",
+            "电话面试",
+            "邀请您参加面试",
         ],
     },
     {
@@ -57,7 +66,15 @@ CATEGORY_RULES: list[CategoryRule] = [
             "take-home",
             "home assignment",
             "testaufgabe",
+            "einstellungstest",
+            "online-test",
+            "fachliche aufgabe",
             "assessment",
+            "测评",
+            "笔试",
+            "在线测试",
+            "编程测试",
+            "作业",
         ],
     },
     {
@@ -74,8 +91,19 @@ CATEGORY_RULES: list[CategoryRule] = [
             "other candidates",
             "after careful consideration",
             "we regret",
+            "nicht berücksichtigen",
+            "nicht in die engere auswahl",
+            "bewerbung nicht weiter",
+            "anderen bewerber",
             "leider",
             "absage",
+            "很遗憾",
+            "遗憾",
+            "未能",
+            "不予考虑",
+            "无法继续",
+            "未通过",
+            "拒绝",
         ],
     },
     {
@@ -90,9 +118,15 @@ CATEGORY_RULES: list[CategoryRule] = [
             "application has been received",
             "we have received",
             "your application was submitted",
+            "vielen dank für ihre bewerbung",
+            "wir haben ihre bewerbung erhalten",
             "eingang ihrer bewerbung",
             "bewerbung erhalten",
             "application confirmation",
+            "收到您的申请",
+            "已收到您的申请",
+            "感谢您的申请",
+            "申请已收到",
         ],
     },
     {
@@ -110,6 +144,17 @@ CATEGORY_RULES: list[CategoryRule] = [
             "please send",
             "availability",
             "next steps",
+            "verfügbarkeit",
+            "verfuegbarkeit",
+            "rückmeldung",
+            "rueckmeldung",
+            "nächste schritte",
+            "naechste schritte",
+            "请提供",
+            "方便时间",
+            "可参加",
+            "下一步",
+            "招聘",
         ],
     },
     {
@@ -125,6 +170,12 @@ CATEGORY_RULES: list[CategoryRule] = [
             "have not heard back",
             "haven't heard back",
             "any update",
+            "nachfassen",
+            "rückfrage",
+            "rueckfrage",
+            "还没收到回复",
+            "是否有更新",
+            "跟进",
         ],
     },
 ]
@@ -181,10 +232,19 @@ def classify_email(subject: str = "", body: str = "") -> dict[str, Any]:
 def _matched_keywords(text: str, keywords: list[str]) -> list[str]:
     matches = []
     for keyword in keywords:
-        pattern = rf"\b{re.escape(_normalize_text(keyword))}\b"
-        if re.search(pattern, text):
+        normalized_keyword = _normalize_text(keyword)
+        if _keyword_matches(text, normalized_keyword):
             matches.append(keyword)
     return matches
+
+
+def _keyword_matches(text: str, keyword: str) -> bool:
+    if not keyword:
+        return False
+    if re.search(r"[^\x00-\x7F]", keyword):
+        return keyword in text
+    pattern = rf"\b{re.escape(keyword)}\b"
+    return bool(re.search(pattern, text))
 
 
 def _is_better_result(candidate: ClassificationMatch, current: ClassificationMatch) -> bool:

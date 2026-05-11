@@ -10,7 +10,9 @@ from typing import Any
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 DEFAULT_GMAIL_QUERY = (
-    "newer_than:60d (application OR bewerbung OR interview OR rejection OR absage OR recruiter OR assessment OR coding)"
+    "newer_than:60d "
+    "(application OR bewerbung OR interview OR rejection OR absage OR recruiter OR assessment OR coding "
+    "OR 申请 OR 面试 OR 拒信 OR 测评)"
 )
 
 

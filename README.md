@@ -15,7 +15,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 ## Features
 
 - Track companies, roles, locations, application dates, links, contacts, notes, rejection reasons, and status.
-- Classify recruiting emails as confirmation, recruiter reply, interview, assessment, rejection, follow-up, or other.
+- Classify English, German, and Chinese recruiting emails as confirmation, recruiter reply, interview, assessment, rejection, follow-up, or other.
 - Extract company, role, location, contact, source link, deadlines, interview dates, and rejection reasons from pasted recruiting emails.
 - Suggest application status updates from email classification results.
 - Generate one-click next actions with priority, follow-up date, rationale, and suggested email template type.
@@ -27,7 +27,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - View a Streamlit dashboard with application metrics and status charts.
 - Edit key application fields directly from the dashboard recent-applications table.
 - Analyze response rate by source, monthly application volume, role-type conversion, waiting days, and stale pipeline risk.
-- Navigate through a simplified sidebar workspace layout: Overview, Applications, Assistant, and Data & Settings.
+- Navigate through a simplified sidebar workspace layout: Overview, Applications, Email Assistant, and Data & Settings.
 - Load demo applications to preview the dashboard immediately after setup.
 - Import and export applications with CSV, including common English and Chinese headers.
 - Re-import updated CSV files without creating duplicate application records.
