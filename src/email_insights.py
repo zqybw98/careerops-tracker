@@ -19,6 +19,7 @@ def build_email_analysis_summary(
     classification: dict[str, Any],
     details: dict[str, str],
     match: dict[str, Any] | None,
+    candidate_count: int = 0,
 ) -> dict[str, str]:
     confidence = _coerce_float(classification.get("confidence"), default=0.0)
     confidence_info = confidence_band(confidence)
@@ -36,11 +37,18 @@ def build_email_analysis_summary(
         )
         match_label = f"{match_confidence['label']} match"
     elif detected_count:
-        decision = (
-            f"Classified as {category}. Suggested status is {suggested_status}. "
-            "Structured context was detected, but no confident existing application match was found."
-        )
-        match_label = "Needs review"
+        if candidate_count:
+            decision = (
+                f"Classified as {category}. Suggested status is {suggested_status}. "
+                f"{candidate_count} possible existing application match(es) need review."
+            )
+            match_label = "Review candidates"
+        else:
+            decision = (
+                f"Classified as {category}. Suggested status is {suggested_status}. "
+                "Structured context was detected, but no confident existing application match was found."
+            )
+            match_label = "Needs review"
     else:
         decision = (
             f"Classified as {category}. Suggested status is {suggested_status}. "
@@ -125,6 +133,37 @@ def build_match_signal_rows(match: dict[str, Any] | None) -> list[dict[str, str]
     ]
 
 
+def build_match_candidate_rows(
+    matches: list[dict[str, Any]],
+    selected_match: dict[str, Any] | None = None,
+) -> list[dict[str, str]]:
+    selected_id = int(selected_match["application_id"]) if selected_match else 0
+    rows = []
+    for index, match in enumerate(matches, start=1):
+        match_id = int(match.get("application_id") or 0)
+        confidence = _coerce_float(match.get("confidence"), default=0.0)
+        if selected_id and match_id == selected_id:
+            recommendation = "Auto-selected"
+        elif index == 1:
+            recommendation = "Top candidate"
+        else:
+            recommendation = "Alternative"
+
+        rows.append(
+            {
+                "Rank": str(index),
+                "Recommendation": recommendation,
+                "Company": str(match.get("company", "")),
+                "Role": str(match.get("role", "")),
+                "Confidence": f"{confidence:.0%}",
+                "Band": confidence_band(confidence)["label"],
+                "Score": str(int(match.get("score", 0) or 0)),
+                "Why": _summarize_reasons(match),
+            }
+        )
+    return rows
+
+
 def build_workflow_steps(
     classification: dict[str, Any],
     recommendation: dict[str, str],
@@ -167,3 +206,10 @@ def _coerce_float(value: object, default: float = 0.0) -> float:
         return float(value)
     except ValueError:
         return default
+
+
+def _summarize_reasons(match: dict[str, Any]) -> str:
+    reasons = [str(reason) for reason in match.get("reasons", []) if str(reason).strip()]
+    if not reasons:
+        return "No strong evidence recorded"
+    return "; ".join(reasons[:3])

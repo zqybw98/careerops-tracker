@@ -1,6 +1,7 @@
 from src.email_insights import (
     build_context_rows,
     build_email_analysis_summary,
+    build_match_candidate_rows,
     build_match_signal_rows,
     build_workflow_steps,
     confidence_band,
@@ -39,6 +40,20 @@ def test_builds_analysis_summary_with_match() -> None:
     assert "Best existing match is Bosch / QA Intern" in summary["decision"]
 
 
+def test_builds_analysis_summary_with_candidate_review() -> None:
+    classification = {
+        "category": "Application Confirmation",
+        "confidence": 0.7,
+        "suggested_status": "Confirmation Received",
+    }
+    details = {"company": "SAP"}
+
+    summary = build_email_analysis_summary(classification, details, match=None, candidate_count=3)
+
+    assert summary["match_label"] == "Review candidates"
+    assert "3 possible existing application match(es) need review" in summary["decision"]
+
+
 def test_context_rows_track_detected_fields() -> None:
     details = {"company": "SAP", "role": "QA Engineer", "deadline": "2026-05-13"}
 
@@ -63,3 +78,31 @@ def test_match_signal_rows_and_workflow_steps() -> None:
     assert {"Signal": "Company", "Score": "6"} in signals
     assert steps[1]["Action"] == "Confirm the matched application"
     assert steps[-1]["Action"] == "Set follow-up date to 2026-05-13"
+
+
+def test_builds_match_candidate_rows() -> None:
+    matches = [
+        {
+            "application_id": 1,
+            "company": "SAP",
+            "role": "QA Engineer",
+            "confidence": 0.89,
+            "score": 16,
+            "reasons": ["company name appears in email", "role title appears in email"],
+        },
+        {
+            "application_id": 2,
+            "company": "SAP",
+            "role": "Data Analyst",
+            "confidence": 0.61,
+            "score": 11,
+            "reasons": ["company name appears in email"],
+        },
+    ]
+
+    rows = build_match_candidate_rows(matches, selected_match=matches[0])
+
+    assert rows[0]["Recommendation"] == "Auto-selected"
+    assert rows[0]["Band"] == "High"
+    assert rows[1]["Recommendation"] == "Alternative"
+    assert rows[1]["Confidence"] == "61%"

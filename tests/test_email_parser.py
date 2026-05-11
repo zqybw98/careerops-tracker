@@ -1,4 +1,8 @@
-from src.email_parser import extract_application_details, match_application_from_email
+from src.email_parser import (
+    extract_application_details,
+    match_application_from_email,
+    rank_application_matches_from_email,
+)
 
 
 def test_extracts_application_details_from_email_text() -> None:
@@ -152,6 +156,47 @@ def test_matches_existing_application_with_domain_and_partial_role_context() -> 
     assert match is not None
     assert match["application_id"] == 20
     assert "sender or source domain matches company identity" in match["reasons"]
+
+
+def test_ranks_top_three_existing_application_matches() -> None:
+    applications = [
+        {
+            "id": 51,
+            "company": "SAP",
+            "role": "Werkstudent Quality AI Engineering",
+            "status": "Applied",
+            "source_link": "https://jobs.sap.com/job/quality-ai",
+        },
+        {
+            "id": 52,
+            "company": "SAP",
+            "role": "Data Analyst Intern",
+            "status": "Applied",
+            "source_link": "https://jobs.sap.com/job/data",
+        },
+        {
+            "id": 53,
+            "company": "DILAX",
+            "role": "Student Assistant Quality AI Engineering",
+            "status": "Applied",
+        },
+        {
+            "id": 54,
+            "company": "Bosch",
+            "role": "Automation Testing Intern",
+            "status": "Applied",
+        },
+    ]
+
+    matches = rank_application_matches_from_email(
+        applications,
+        subject="Next steps for your Werkstudent Quality AI Engineering application",
+        body="From: SAP Careers <careers@sap.com>\nCompany: SAP\nRole: Werkstudent Quality AI Engineering",
+    )
+
+    assert len(matches) == 3
+    assert [match["application_id"] for match in matches] == [51, 52, 53]
+    assert matches[0]["score"] > matches[1]["score"]
 
 
 def test_does_not_auto_match_ambiguous_company_only_email() -> None:

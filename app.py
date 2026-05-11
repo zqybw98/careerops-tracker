@@ -33,11 +33,16 @@ from src.email_insights import (
     build_context_rows,
     build_email_analysis_summary,
     build_keyword_rows,
+    build_match_candidate_rows,
     build_match_reason_rows,
     build_match_signal_rows,
     build_workflow_steps,
 )
-from src.email_parser import extract_application_details, match_application_from_email
+from src.email_parser import (
+    extract_application_details,
+    match_application_from_email,
+    rank_application_matches_from_email,
+)
 from src.email_templates import TEMPLATE_TYPES, generate_email_template, suggest_template_type
 from src.gmail_client import (
     DEFAULT_GMAIL_QUERY,
@@ -560,6 +565,12 @@ def render_email_assistant(applications: list[dict]) -> None:
         st.session_state.pop("email_create_success_message", None)
         result = classify_email(subject=subject, body=body)
         details = extract_application_details(subject=subject, body=body)
+        match_candidates = rank_application_matches_from_email(
+            applications,
+            subject=subject,
+            body=body,
+            extracted_details=details,
+        )
         match = match_application_from_email(
             applications,
             subject=subject,
@@ -569,6 +580,7 @@ def render_email_assistant(applications: list[dict]) -> None:
         st.session_state["last_classification"] = result
         st.session_state["last_email_details"] = details
         st.session_state["last_application_match"] = match
+        st.session_state["last_application_matches"] = match_candidates
 
     result = st.session_state.get("last_classification")
     if not result:
@@ -577,22 +589,33 @@ def render_email_assistant(applications: list[dict]) -> None:
 
     details = st.session_state.get("last_email_details", {})
     match = st.session_state.get("last_application_match")
+    match_candidates = st.session_state.get("last_application_matches", [])
     create_recommendation = build_next_action_recommendation(result, details)
 
-    render_email_analysis_report(result, details, match, create_recommendation, has_applications=bool(applications))
+    render_email_analysis_report(
+        result,
+        details,
+        match,
+        match_candidates,
+        create_recommendation,
+        has_applications=bool(applications),
+    )
 
     if applications:
         st.divider()
         st.subheader("Recommended Workflow")
         label_id_map = _application_label_id_map(applications)
         labels = list(label_id_map.keys())
-        default_index = _matched_label_index(labels, label_id_map, match)
+        default_match = match or (match_candidates[0] if match_candidates else None)
+        default_index = _matched_label_index(labels, label_id_map, default_match)
         selected_label = st.selectbox(
             "Update an existing application",
             labels,
             index=default_index,
             key="email_update_select",
         )
+        if not match and match_candidates:
+            st.caption("Default selection uses the highest-ranked candidate. Review it before applying changes.")
         selected_id = label_id_map[selected_label]
         selected = next(item for item in applications if item["id"] == selected_id)
         recommendation = build_next_action_recommendation(result, details, selected)
@@ -705,10 +728,11 @@ def render_email_analysis_report(
     result: dict,
     details: dict[str, str],
     match: dict | None,
+    match_candidates: list[dict],
     recommendation: dict[str, str],
     has_applications: bool,
 ) -> None:
-    summary = build_email_analysis_summary(result, details, match)
+    summary = build_email_analysis_summary(result, details, match, candidate_count=len(match_candidates))
     classification_confidence = float(result.get("confidence") or 0)
 
     st.subheader("Email Analysis")
@@ -743,23 +767,37 @@ def render_email_analysis_report(
             st.write("Source link:", details["source_link"])
 
     st.markdown("**Application Match**")
-    if match:
-        match_confidence = float(match.get("confidence") or 0)
-        st.success(f"Best match: {match['company']} / {match['role']}")
+    visible_match = match or (match_candidates[0] if match_candidates else None)
+    if match_candidates:
+        if match:
+            st.success(f"Best match: {match['company']} / {match['role']}")
+        else:
+            st.warning("No auto-selected confident match. Review the ranked candidates before applying changes.")
+        st.markdown("**Top 3 Existing Application Matches**")
+        st.caption(f"Showing {len(match_candidates)} candidate(s), ranked by score and confidence.")
+        st.dataframe(
+            pd.DataFrame(build_match_candidate_rows(match_candidates, selected_match=match)),
+            use_container_width=True,
+            hide_index=True,
+            height=170,
+        )
+
+    if visible_match:
+        match_confidence = float(visible_match.get("confidence") or 0)
         match_cols = st.columns(4)
         match_cols[0].metric("Match status", summary["match_label"])
         match_cols[1].metric("Match confidence", f"{match_confidence:.0%}")
-        match_cols[2].metric("Match score", match["score"])
+        match_cols[2].metric("Match score", visible_match["score"])
         match_cols[3].metric("Workflow priority", recommendation["priority"])
 
         reason_col, signal_col = st.columns([2, 1])
         with reason_col:
-            reason_rows = build_match_reason_rows(match)
+            reason_rows = build_match_reason_rows(visible_match)
             if reason_rows:
                 st.dataframe(pd.DataFrame(reason_rows), use_container_width=True, hide_index=True, height=180)
         with signal_col:
             st.dataframe(
-                pd.DataFrame(build_match_signal_rows(match)),
+                pd.DataFrame(build_match_signal_rows(visible_match)),
                 use_container_width=True,
                 hide_index=True,
                 height=180,

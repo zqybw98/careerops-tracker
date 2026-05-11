@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from src.models import CLOSED_STATUSES
 
 MATCH_THRESHOLD = 6
+SUGGESTED_MATCH_THRESHOLD = 3
 AMBIGUOUS_MATCH_MARGIN = 2
 
 GENERIC_EMAIL_DOMAINS = {
@@ -170,8 +171,33 @@ def match_application_from_email(
     body: str = "",
     extracted_details: dict[str, str] | None = None,
 ) -> dict[str, Any] | None:
-    if not applications:
+    sorted_matches = rank_application_matches_from_email(
+        applications,
+        subject=subject,
+        body=body,
+        extracted_details=extracted_details,
+        limit=max(len(applications), 1),
+        minimum_score=MATCH_THRESHOLD,
+    )
+    if not sorted_matches:
         return None
+
+    if len(sorted_matches) > 1 and _is_ambiguous_match(sorted_matches[0], sorted_matches[1]):
+        return None
+
+    return sorted_matches[0]
+
+
+def rank_application_matches_from_email(
+    applications: list[dict[str, Any]],
+    subject: str = "",
+    body: str = "",
+    extracted_details: dict[str, str] | None = None,
+    limit: int = 3,
+    minimum_score: int = SUGGESTED_MATCH_THRESHOLD,
+) -> list[dict[str, Any]]:
+    if not applications or limit <= 0:
+        return []
 
     details = extracted_details or extract_application_details(subject, body)
     raw_email_text = _clean_text(f"{subject}\n{body}")
@@ -179,15 +205,8 @@ def match_application_from_email(
     scored_matches = [
         _score_application_match(application, raw_email_text, normalized_text, details) for application in applications
     ]
-    scored_matches = [match for match in scored_matches if match["score"] >= MATCH_THRESHOLD]
-    if not scored_matches:
-        return None
-
-    sorted_matches = sorted(scored_matches, key=_match_sort_key, reverse=True)
-    if len(sorted_matches) > 1 and _is_ambiguous_match(sorted_matches[0], sorted_matches[1]):
-        return None
-
-    return sorted_matches[0]
+    suggested_matches = [match for match in scored_matches if match["score"] >= minimum_score]
+    return sorted(suggested_matches, key=_match_sort_key, reverse=True)[:limit]
 
 
 def _score_application_match(

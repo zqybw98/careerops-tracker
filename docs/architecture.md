@@ -48,7 +48,8 @@ flowchart LR
 | `src/models.py` | Shared status options, application columns, and classification result shape. |
 | `src/dashboard.py` | Aggregates applications into total, weekly, waiting, interview, assessment, and rejection metrics. |
 | `src/email_classifier.py` | Rule-based recruiting email classification with confidence scores and suggested next actions. |
-| `src/email_parser.py` | Extracts company, role, location, contact, source-link, deadline, interview-date, and rejection-reason hints from pasted email text and matches existing records. |
+| `src/email_parser.py` | Extracts company, role, location, contact, source-link, deadline, interview-date, and rejection-reason hints from pasted email text, then ranks existing application matches. |
+| `src/email_insights.py` | Converts classification, extracted context, and ranked matches into explainable Email Assistant report rows. |
 | `src/email_templates.py` | Generates rule-based follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails. |
 | `src/gmail_client.py` | Optional local Gmail API client that fetches read-only recruiting emails for preview classification. |
 | `src/reminder_engine.py` | Generates follow-up, interview, assessment, stale-application, and saved-role reminders. |

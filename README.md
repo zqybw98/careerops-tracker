@@ -19,7 +19,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Extract company, role, location, contact, source link, deadlines, interview dates, and rejection reasons from pasted recruiting emails.
 - Suggest application status updates from email classification results.
 - Generate one-click next actions with priority, follow-up date, rationale, and suggested email template type.
-- Match recruiting emails to existing applications with company, role, sender-domain, source-domain, status-context, and ambiguity checks.
+- Rank the top existing application matches for recruiting emails with scores, confidence, and match reasons.
 - Optionally sync recent recruiting emails from Gmail with local read-only OAuth.
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
 - Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails.
