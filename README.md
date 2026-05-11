@@ -26,10 +26,11 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - View a Streamlit dashboard with application metrics and status charts.
 - Edit key application fields directly from the dashboard recent-applications table.
 - Analyze response rate by source, weekly application volume, role-type conversion, waiting days, and stale pipeline risk.
+- Navigate through a simplified sidebar workspace layout: Overview, Applications, Assistant, and Data & Settings.
 - Load demo applications to preview the dashboard immediately after setup.
 - Import and export applications with CSV, including common English and Chinese headers.
 - Re-import updated CSV files without creating duplicate application records.
-- Keep Gmail API integration optional for future expansion.
+- Keep Gmail integration optional and local-only.
 
 ## Screenshots
 

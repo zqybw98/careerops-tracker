@@ -68,6 +68,40 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+    .block-container {
+        max-width: 1480px;
+        padding-top: 2rem;
+        padding-bottom: 3rem;
+    }
+    [data-testid="stSidebar"] {
+        background: #111418;
+    }
+    [data-testid="stSidebar"] h1,
+    [data-testid="stSidebar"] h2,
+    [data-testid="stSidebar"] h3 {
+        font-size: 1.05rem;
+    }
+    div[data-testid="stMetric"] {
+        background: #131820;
+        border: 1px solid #252b35;
+        border-radius: 8px;
+        padding: 0.85rem 1rem;
+    }
+    div[data-testid="stExpander"] {
+        border-color: #252b35;
+        border-radius: 8px;
+    }
+    div[data-testid="stTabs"] button {
+        font-weight: 600;
+    }
+    .app-kicker {
+        color: #9aa4b2;
+        font-size: 0.82rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-bottom: 0.2rem;
+    }
     div[data-testid="stDataFrame"] div[role="gridcell"],
     div[data-testid="stDataFrame"] div[role="columnheader"] {
         font-size: 15px;
@@ -81,30 +115,52 @@ init_db()
 
 
 def main() -> None:
-    st.title("CareerOps Tracker")
-    st.caption("Job application tracking, email classification, and follow-up reminders.")
-
     applications = get_applications()
     reminders = generate_reminders(applications)
 
-    dashboard_tab, applications_tab, email_tab, templates_tab, data_tab = st.tabs(
-        ["Dashboard", "Applications", "Email Assistant", "Templates", "Data"]
-    )
+    workspace = render_sidebar_navigation(applications, reminders)
+    render_app_header(workspace)
 
-    with dashboard_tab:
+    if workspace == "Overview":
         render_dashboard(applications, reminders)
-
-    with applications_tab:
+    elif workspace == "Applications":
         render_applications(applications)
+    elif workspace == "Assistant":
+        render_assistant_workspace(applications)
+    else:
+        render_data_tools(applications)
 
+
+def render_sidebar_navigation(applications: list[dict], reminders: list[dict]) -> str:
+    with st.sidebar:
+        st.title("CareerOps")
+        st.caption("Job search operations tracker")
+        workspace = st.radio(
+            "Workspace",
+            ["Overview", "Applications", "Assistant", "Data & Settings"],
+            label_visibility="collapsed",
+        )
+        st.divider()
+        st.metric("Applications", len(applications))
+        st.metric("Pending actions", len(reminders))
+        st.caption("Local data stays in SQLite. Gmail sync is optional and read-only.")
+    return workspace
+
+
+def render_app_header(workspace: str) -> None:
+    st.markdown('<div class="app-kicker">CareerOps Tracker</div>', unsafe_allow_html=True)
+    st.title(workspace)
+    st.caption("Job application tracking, email classification, and follow-up reminders.")
+
+
+def render_assistant_workspace(applications: list[dict]) -> None:
+    email_tab, templates_tab, gmail_tab = st.tabs(["Email Classification", "Templates", "Gmail Sync"])
     with email_tab:
         render_email_assistant(applications)
-
     with templates_tab:
         render_email_templates(applications)
-
-    with data_tab:
-        render_data_tools(applications)
+    with gmail_tab:
+        render_gmail_sync_tools(applications)
 
 
 def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
@@ -679,7 +735,7 @@ def render_email_templates(applications: list[dict]) -> None:
 
 
 def render_data_tools(applications: list[dict]) -> None:
-    st.subheader("Import / Export")
+    st.subheader("Sample Data")
 
     if st.button("Load sample applications"):
         created = seed_sample_applications()
@@ -689,19 +745,7 @@ def render_data_tools(applications: list[dict]) -> None:
             st.info("Sample applications are already loaded.")
         st.rerun()
 
-    if applications:
-        with st.expander("Maintenance"):
-            st.caption("Use this after repeated CSV imports to remove duplicate company/role/date records.")
-            if st.button("Clean duplicate applications", key="data_clean_duplicates"):
-                removed = deduplicate_applications()
-                if removed:
-                    st.success(f"Removed {removed} duplicate records.")
-                else:
-                    st.info("No duplicate records found.")
-                st.rerun()
-
-    render_gmail_sync_tools(applications)
-
+    st.subheader("CSV Import")
     uploaded_file = st.file_uploader("Import applications from CSV", type=["csv"])
     if uploaded_file is not None:
         uploaded_df = pd.read_csv(uploaded_file, dtype=str).fillna("")
@@ -730,6 +774,7 @@ def render_data_tools(applications: list[dict]) -> None:
             )
             st.rerun()
 
+    st.subheader("Export")
     if applications:
         export_df = _with_display_sequence(pd.DataFrame(applications))
         export_columns = ["#"] + APPLICATION_COLUMNS + ["created_at", "updated_at"]
@@ -739,82 +784,95 @@ def render_data_tools(applications: list[dict]) -> None:
             file_name="careerops_applications.csv",
             mime="text/csv",
         )
+    else:
+        st.info("Add or import applications before exporting CSV data.")
 
-    st.subheader("Expected CSV Columns")
-    st.code(", ".join(APPLICATION_COLUMNS), language="text")
-    st.caption(
-        "English and common Chinese headers are supported, "
-        "for example 公司名称, 职位名称, 申请日期, 最新状态, 备注/来源."
-    )
+    with st.expander("CSV format"):
+        st.code(", ".join(APPLICATION_COLUMNS), language="text")
+        st.caption(
+            "English and common Chinese headers are supported, "
+            "for example 公司名称, 职位名称, 申请日期, 最新状态, 备注/来源."
+        )
+
+    if applications:
+        with st.expander("Maintenance"):
+            st.caption("Use this after repeated CSV imports to remove duplicate company/role/date records.")
+            if st.button("Clean duplicate applications", key="data_clean_duplicates"):
+                removed = deduplicate_applications()
+                if removed:
+                    st.success(f"Removed {removed} duplicate records.")
+                else:
+                    st.info("No duplicate records found.")
+                st.rerun()
 
 
 def render_gmail_sync_tools(applications: list[dict]) -> None:
-    with st.expander("Optional Gmail recruiting email sync"):
-        st.caption(
-            "Local-only Gmail API sync. Uses read-only access and previews suggestions before changing applications."
-        )
-        query = st.text_input("Gmail search query", value=DEFAULT_GMAIL_QUERY, key="gmail_query")
-        max_results = st.number_input("Max emails", min_value=1, max_value=25, value=10, step=1, key="gmail_max")
-        col_credentials, col_token = st.columns(2)
-        credentials_path = col_credentials.text_input(
-            "OAuth credentials path",
-            value="credentials.json",
-            key="gmail_credentials_path",
-        )
-        token_path = col_token.text_input("Token path", value="token.json", key="gmail_token_path")
+    st.subheader("Gmail Recruiting Email Sync")
+    st.caption(
+        "Local-only Gmail API sync. Uses read-only access and previews suggestions before changing applications."
+    )
+    query = st.text_input("Gmail search query", value=DEFAULT_GMAIL_QUERY, key="gmail_query")
+    max_results = st.number_input("Max emails", min_value=1, max_value=25, value=10, step=1, key="gmail_max")
+    col_credentials, col_token = st.columns(2)
+    credentials_path = col_credentials.text_input(
+        "OAuth credentials path",
+        value="credentials.json",
+        key="gmail_credentials_path",
+    )
+    token_path = col_token.text_input("Token path", value="token.json", key="gmail_token_path")
 
-        if st.button("Sync Gmail emails", key="gmail_sync_button"):
-            try:
-                emails = fetch_recruiting_emails(
-                    credentials_path=credentials_path,
-                    token_path=token_path,
-                    query=query,
-                    max_results=int(max_results),
-                )
-                st.session_state["gmail_sync_preview"] = _build_gmail_sync_preview(emails, applications)
-            except (GmailDependencyError, GmailConfigurationError) as error:
-                st.error(str(error))
-                st.info("Install optional dependencies with `pip install -r requirements-gmail.txt`.")
-
-        previews = st.session_state.get("gmail_sync_preview", [])
-        if not previews:
-            st.info("Sync Gmail to preview recruiting email classifications here.")
-            return
-
-        st.write(f"Previewed {len(previews)} email(s). Select rows to apply suggested updates.")
-        preview_df = _gmail_preview_display_df(previews)
-        edited_preview = st.data_editor(
-            preview_df,
-            use_container_width=True,
-            hide_index=True,
-            disabled=[
-                "index",
-                "subject",
-                "sender",
-                "category",
-                "confidence",
-                "suggested_status",
-                "company",
-                "role",
-                "matched_application",
-            ],
-            column_config={
-                "apply": st.column_config.CheckboxColumn("apply"),
-                "confidence": st.column_config.TextColumn("confidence"),
-                "subject": st.column_config.TextColumn("subject", width="large"),
-                "matched_application": st.column_config.TextColumn("matched_application", width="large"),
-            },
-            key="gmail_sync_preview_editor",
-        )
-
-        if st.button("Apply selected Gmail suggestions", key="gmail_apply_selected"):
-            apply_result = _apply_selected_gmail_suggestions(previews, edited_preview, applications)
-            st.success(
-                f"Applied Gmail suggestions: {apply_result['updated']} updated, "
-                f"{apply_result['created']} created, {apply_result['skipped']} skipped."
+    if st.button("Sync Gmail emails", key="gmail_sync_button"):
+        try:
+            emails = fetch_recruiting_emails(
+                credentials_path=credentials_path,
+                token_path=token_path,
+                query=query,
+                max_results=int(max_results),
             )
-            st.session_state["gmail_sync_preview"] = []
-            st.rerun()
+            st.session_state["gmail_sync_preview"] = _build_gmail_sync_preview(emails, applications)
+        except (GmailDependencyError, GmailConfigurationError) as error:
+            st.error(str(error))
+            st.info("Install optional dependencies with `pip install -r requirements-gmail.txt`.")
+
+    previews = st.session_state.get("gmail_sync_preview", [])
+    if not previews:
+        st.info("Sync Gmail to preview recruiting email classifications here.")
+        return
+
+    st.write(f"Previewed {len(previews)} email(s). Select rows to apply suggested updates.")
+    preview_df = _gmail_preview_display_df(previews)
+    edited_preview = st.data_editor(
+        preview_df,
+        use_container_width=True,
+        hide_index=True,
+        disabled=[
+            "index",
+            "subject",
+            "sender",
+            "category",
+            "confidence",
+            "suggested_status",
+            "company",
+            "role",
+            "matched_application",
+        ],
+        column_config={
+            "apply": st.column_config.CheckboxColumn("apply"),
+            "confidence": st.column_config.TextColumn("confidence"),
+            "subject": st.column_config.TextColumn("subject", width="large"),
+            "matched_application": st.column_config.TextColumn("matched_application", width="large"),
+        },
+        key="gmail_sync_preview_editor",
+    )
+
+    if st.button("Apply selected Gmail suggestions", key="gmail_apply_selected"):
+        apply_result = _apply_selected_gmail_suggestions(previews, edited_preview, applications)
+        st.success(
+            f"Applied Gmail suggestions: {apply_result['updated']} updated, "
+            f"{apply_result['created']} created, {apply_result['skipped']} skipped."
+        )
+        st.session_state["gmail_sync_preview"] = []
+        st.rerun()
 
 
 def render_activity_log(application_id: int) -> None:

@@ -27,12 +27,14 @@ flowchart LR
     Dashboard --> UI
 ```
 
-1. The user adds or imports application records in the Streamlit interface.
-2. The app stores records in a local SQLite database under `data/`.
-3. The dashboard reads application records and builds pipeline metrics.
-4. The email assistant classifies pasted recruiting emails with transparent rules.
-5. Suggested email outcomes can update an existing application.
-6. The reminder engine turns dates and statuses into pending actions.
+1. The user works through four sidebar workspaces: Overview, Applications,
+   Assistant, and Data & Settings.
+2. The user adds or imports application records in the Streamlit interface.
+3. The app stores records in a local SQLite database under `data/`.
+4. The dashboard reads application records and builds pipeline metrics.
+5. The assistant classifies pasted or optionally synced Gmail recruiting emails with transparent rules.
+6. Suggested email outcomes can update an existing application.
+7. The reminder engine turns dates and statuses into pending actions.
 
 ## Components
 
