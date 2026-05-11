@@ -1,7 +1,7 @@
 from datetime import date
 
 from src.analytics import (
-    build_applications_per_week,
+    build_applications_per_month,
     build_average_waiting_days_by_company,
     build_interview_conversion_by_role_type,
     build_pipeline_health,
@@ -108,7 +108,7 @@ def test_waiting_and_stale_metrics_focus_on_open_applications() -> None:
     assert {"bucket": "Needs follow-up (7-13 days)", "status": "Interview Scheduled", "applications": 1} in stale_rows
 
 
-def test_weekly_volume_saved_conversion_and_source_inference() -> None:
+def test_monthly_volume_saved_conversion_and_source_inference() -> None:
     applications = [
         {
             "role": "QA",
@@ -133,15 +133,14 @@ def test_weekly_volume_saved_conversion_and_source_inference() -> None:
         },
     ]
 
-    weekly_rows = build_applications_per_week(applications)
+    monthly_rows = build_applications_per_month(applications)
     saved_rows = build_saved_vs_applied_summary(applications)
 
     assert infer_source(applications[0]) == "StepStone"
     assert infer_source(applications[1]) == "Company Career Page / ATS"
     assert infer_source(applications[2]) == "Manual / Unknown"
-    assert weekly_rows == [
-        {"week": "2026-W18", "applications": 2},
-        {"week": "2026-W19", "applications": 1},
+    assert monthly_rows == [
+        {"month": "May 2026", "applications": 3},
     ]
     assert saved_rows == [
         {"stage": "Saved only", "applications": 1},

@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from src.analytics import (
-    build_applications_per_week,
+    build_applications_per_month,
     build_average_waiting_days_by_company,
     build_interview_conversion_by_role_type,
     build_pipeline_health,
@@ -213,20 +213,20 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
 
     activity_col, source_col = st.columns(2)
     with activity_col:
-        weekly_df = pd.DataFrame(build_applications_per_week(applications))
-        if weekly_df.empty:
-            st.info("Add application dates to see weekly application volume.")
+        monthly_df = pd.DataFrame(build_applications_per_month(applications))
+        if monthly_df.empty:
+            st.info("Add application dates to see monthly application volume.")
         else:
-            weekly_fig = px.bar(
-                weekly_df,
-                x="week",
+            monthly_fig = px.bar(
+                monthly_df,
+                x="month",
                 y="applications",
-                title="Applications per Week",
+                title="Applications per Month",
                 text="applications",
             )
-            weekly_fig.update_layout(xaxis_title="", yaxis_title="Applications")
-            _style_bar_labels(weekly_fig)
-            st.plotly_chart(weekly_fig, use_container_width=True)
+            monthly_fig.update_layout(xaxis_title="", yaxis_title="Applications")
+            _style_bar_labels(monthly_fig)
+            st.plotly_chart(monthly_fig, use_container_width=True)
 
     with source_col:
         source_df = _with_rate_percent(pd.DataFrame(build_response_rate_by_source(applications)), "response_rate")

@@ -80,22 +80,21 @@ def build_pipeline_health(
     }
 
 
-def build_applications_per_week(applications: list[dict[str, Any]]) -> list[dict[str, int | str]]:
-    weekly_counts: dict[tuple[int, int], int] = defaultdict(int)
+def build_applications_per_month(applications: list[dict[str, Any]]) -> list[dict[str, int | str]]:
+    monthly_counts: dict[tuple[int, int], int] = defaultdict(int)
 
     for item in applications:
         application_date = _parse_date(item.get("application_date"))
         if application_date is None:
             continue
-        iso_year, iso_week, _ = application_date.isocalendar()
-        weekly_counts[(iso_year, iso_week)] += 1
+        monthly_counts[(application_date.year, application_date.month)] += 1
 
     return [
         {
-            "week": f"{year}-W{week:02d}",
+            "month": date(year, month, 1).strftime("%b %Y"),
             "applications": count,
         }
-        for (year, week), count in sorted(weekly_counts.items())
+        for (year, month), count in sorted(monthly_counts.items())
     ]
 
 
