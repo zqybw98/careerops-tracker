@@ -80,6 +80,28 @@ def test_match_signal_rows_and_workflow_steps() -> None:
     assert steps[-1]["Action"] == "Set follow-up date to 2026-05-13"
 
 
+def test_workflow_steps_include_decision_context() -> None:
+    classification = {"category": "Rejection", "suggested_status": "Rejected"}
+    recommendation = {
+        "next_action": "Capture rejection reason.",
+        "follow_up_date": "",
+    }
+    workflow_decision = {
+        "record_action": "Save rejection reason and add a traceable activity event.",
+        "status_action": "Applied -> Rejected",
+    }
+
+    steps = build_workflow_steps(
+        classification,
+        recommendation,
+        has_match=True,
+        workflow_decision=workflow_decision,
+    )
+
+    assert steps[1]["Action"] == "Save rejection reason and add a traceable activity event."
+    assert steps[-1]["Action"] == "Applied -> Rejected"
+
+
 def test_builds_match_candidate_rows() -> None:
     matches = [
         {

@@ -41,7 +41,7 @@ flowchart LR
 | Component | Responsibility |
 | --- | --- |
 | `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. |
-| `src/action_recommender.py` | Converts classified emails and extracted context into prioritized next actions, follow-up dates, rationales, and suggested template types. |
+| `src/action_recommender.py` | Converts classified emails and extracted context into workflow decisions, prioritized next actions, follow-up dates, rationales, and suggested template types. |
 | `src/analytics.py` | Builds decision-oriented metrics such as response rates, conversion, waiting days, monthly volume, and stale pipeline breakdowns. |
 | `src/database.py` | SQLite connection management, schema creation, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |
 | `src/csv_importer.py` | Normalizes English and Chinese CSV headers, dates, and statuses before import. |
@@ -165,11 +165,12 @@ emails from employers with multiple open roles are routed to manual selection
 instead of being applied to the wrong record.
 
 The action recommender turns the classified email and extracted fields into a
-single operational next step. It prioritizes actions such as interview
+workflow decision and an operational next step. It decides whether the safest
+action is to update status, save only a task, confirm a candidate match, close a
+rejection, or create a new record. It then prioritizes actions such as interview
 preparation, assessment submission, recruiter replies, rejection review, or
-scheduled follow-up. Each recommendation includes priority, follow-up date,
-template type, and rationale, and can be applied to the selected application
-without changing status unless the user explicitly applies the suggested status.
+scheduled follow-up. Each recommendation includes priority, review level,
+follow-up date, template type, rationale, and explicit record/status actions.
 
 ## Email Template Generation
 

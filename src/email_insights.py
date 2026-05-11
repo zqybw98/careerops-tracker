@@ -168,6 +168,7 @@ def build_workflow_steps(
     classification: dict[str, Any],
     recommendation: dict[str, str],
     has_match: bool,
+    workflow_decision: dict[str, str] | None = None,
 ) -> list[dict[str, str]]:
     steps = [
         {
@@ -178,19 +179,24 @@ def build_workflow_steps(
         },
         {
             "Step": "2",
-            "Action": (
-                "Confirm the matched application" if has_match else "Select an application or create a new record"
-            ),
+            "Action": _workflow_step_two(workflow_decision, has_match),
         },
         {
             "Step": "3",
             "Action": recommendation.get("next_action", "Review the email manually."),
         },
     ]
+    if workflow_decision and workflow_decision.get("status_action"):
+        steps.append(
+            {
+                "Step": str(len(steps) + 1),
+                "Action": workflow_decision["status_action"],
+            }
+        )
     if recommendation.get("follow_up_date"):
         steps.append(
             {
-                "Step": "4",
+                "Step": str(len(steps) + 1),
                 "Action": f"Set follow-up date to {recommendation['follow_up_date']}",
             }
         )
@@ -213,3 +219,9 @@ def _summarize_reasons(match: dict[str, Any]) -> str:
     if not reasons:
         return "No strong evidence recorded"
     return "; ".join(reasons[:3])
+
+
+def _workflow_step_two(workflow_decision: dict[str, str] | None, has_match: bool) -> str:
+    if workflow_decision and workflow_decision.get("record_action"):
+        return workflow_decision["record_action"]
+    return "Confirm the matched application" if has_match else "Select an application or create a new record"

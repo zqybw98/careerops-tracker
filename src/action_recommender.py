@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from src.models import CLOSED_STATUSES
+
 
 def build_next_action_recommendation(
     classification: dict[str, Any],
@@ -96,6 +98,154 @@ def build_next_action_recommendation(
     }
 
 
+def build_workflow_decision(
+    classification: dict[str, Any],
+    details: dict[str, str],
+    recommendation: dict[str, str],
+    application: dict[str, Any] | None = None,
+    auto_match: dict[str, Any] | None = None,
+    match_candidates: list[dict[str, Any]] | None = None,
+) -> dict[str, str]:
+    confidence = _confidence(classification)
+    category = str(classification.get("category") or "Other")
+    suggested_status = str(classification.get("suggested_status") or "Applied")
+    current_status = str(application.get("status", "") or "Applied") if application else ""
+    candidate_count = len(match_candidates or [])
+    has_extracted_record = bool(details.get("company") and details.get("role"))
+
+    if confidence < 0.6 or category == "Other":
+        return {
+            "operation": "Manual review",
+            "review_level": "High",
+            "record_action": "Review the email before changing a record.",
+            "status_action": _status_action_text(current_status, current_status or suggested_status),
+            "primary_action_label": "Save reviewed update",
+            "secondary_action_label": "Save next action only",
+            "decision": "The email evidence is weak, so the safest next step is manual review.",
+            "rationale": "Low-confidence or unknown emails should not drive automatic workflow changes.",
+        }
+
+    if application is None:
+        if has_extracted_record:
+            return {
+                "operation": "Create application",
+                "review_level": "Medium",
+                "record_action": "Create a new application from extracted company and role.",
+                "status_action": f"Create as {suggested_status}",
+                "primary_action_label": "Create application from email",
+                "secondary_action_label": "Review extracted fields",
+                "decision": (
+                    "No existing application was selected, but the email contains enough context to create one."
+                ),
+                "rationale": "Company and role were extracted, so this can become a structured application record.",
+            }
+        return {
+            "operation": "Manual review",
+            "review_level": "High",
+            "record_action": "Add missing company and role before creating a record.",
+            "status_action": "No status change",
+            "primary_action_label": "Review manually",
+            "secondary_action_label": "Add missing fields",
+            "decision": "The email does not contain enough structured context to create or update a record.",
+            "rationale": "A reliable application record needs at least company and role.",
+        }
+
+    if auto_match is None and candidate_count:
+        return {
+            "operation": "Confirm match",
+            "review_level": "Medium",
+            "record_action": "Confirm the selected candidate before applying workflow changes.",
+            "status_action": _status_action_text(current_status, suggested_status),
+            "primary_action_label": "Apply to selected application",
+            "secondary_action_label": "Save next action only",
+            "decision": "The assistant found possible matches, but none were strong enough for automatic selection.",
+            "rationale": "A human confirmation step reduces the risk of updating the wrong application.",
+        }
+
+    if suggested_status == "Rejected":
+        return {
+            "operation": "Close application" if current_status not in CLOSED_STATUSES else "Record outcome",
+            "review_level": "Low" if auto_match else "Medium",
+            "record_action": "Save rejection reason and add a traceable activity event.",
+            "status_action": _status_action_text(current_status, "Rejected"),
+            "primary_action_label": "Apply rejection update",
+            "secondary_action_label": "Save rejection note only",
+            "decision": "The email indicates a rejection, so the application should be closed with context preserved.",
+            "rationale": "Rejected emails are terminal workflow events and are valuable for later review.",
+        }
+
+    if suggested_status == "Interview Scheduled":
+        return {
+            "operation": "Prepare interview",
+            "review_level": "Low" if auto_match else "Medium",
+            "record_action": "Update status, store interview context, and schedule preparation.",
+            "status_action": _status_action_text(current_status, "Interview Scheduled"),
+            "primary_action_label": "Apply interview update",
+            "secondary_action_label": "Save preparation task only",
+            "decision": "The email indicates an interview step, so preparation and scheduling are the next priority.",
+            "rationale": "Interview invitations are high-value workflow events with time-sensitive preparation work.",
+        }
+
+    if suggested_status == "Assessment":
+        return {
+            "operation": "Track assessment",
+            "review_level": "Low" if auto_match else "Medium",
+            "record_action": "Update status and track the assessment deadline.",
+            "status_action": _status_action_text(current_status, "Assessment"),
+            "primary_action_label": "Apply assessment update",
+            "secondary_action_label": "Save deadline task only",
+            "decision": "The email contains an assessment step, so deadline tracking is the safest next action.",
+            "rationale": "Assessment emails usually create a time-bound task.",
+        }
+
+    if suggested_status == "Confirmation Received":
+        return {
+            "operation": "Schedule follow-up",
+            "review_level": "Low" if auto_match else "Medium",
+            "record_action": "Update early-stage status and set a follow-up reminder.",
+            "status_action": _status_action_text(current_status, "Confirmation Received"),
+            "primary_action_label": "Apply confirmation update",
+            "secondary_action_label": "Save follow-up only",
+            "decision": "The email confirms receipt, so the useful action is waiting plus scheduled follow-up.",
+            "rationale": "Confirmation emails rarely need a reply, but they should start a follow-up timer.",
+        }
+
+    if suggested_status == "Follow-up Needed":
+        return {
+            "operation": "Reply required",
+            "review_level": "Medium",
+            "record_action": "Keep the record active and prepare a recruiter response.",
+            "status_action": _status_action_text(current_status, "Follow-up Needed"),
+            "primary_action_label": "Apply reply-needed update",
+            "secondary_action_label": "Save reply task only",
+            "decision": "The email appears to require a response, so the next step is a recruiter reply task.",
+            "rationale": "Recruiter messages often need human-written responses before a status change is final.",
+        }
+
+    if current_status == suggested_status:
+        return {
+            "operation": "Refresh next action",
+            "review_level": "Low",
+            "record_action": "Keep the current status and refresh next action details.",
+            "status_action": _status_action_text(current_status, suggested_status),
+            "primary_action_label": "Refresh application task",
+            "secondary_action_label": "Save next action only",
+            "decision": "The status is already aligned, so only the action details need to be updated.",
+            "rationale": "Avoid unnecessary status churn when the application is already in the suggested stage.",
+        }
+
+    return {
+        "operation": "Update status",
+        "review_level": "Medium",
+        "record_action": "Update the selected application and save the assistant rationale.",
+        "status_action": _status_action_text(current_status, suggested_status),
+        "primary_action_label": "Apply recommended update",
+        "secondary_action_label": "Save next action only",
+        "decision": recommendation.get("next_action", "Update the selected application based on this email."),
+        "rationale": recommendation.get("rationale", "The email classification suggests a workflow update."),
+    }
+
+
 def _relative_follow_up(classification: dict[str, Any], today: date) -> str:
     days = classification.get("suggested_follow_up_days")
     if days is None:
@@ -128,3 +278,18 @@ def _value(
 
     detail_value = details.get(key, "").strip()
     return detail_value or fallback
+
+
+def _confidence(classification: dict[str, Any]) -> float:
+    try:
+        return float(classification.get("confidence", 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _status_action_text(current_status: str, suggested_status: str) -> str:
+    if not current_status:
+        return f"Set {suggested_status}"
+    if current_status == suggested_status:
+        return f"Keep {current_status}"
+    return f"{current_status} -> {suggested_status}"

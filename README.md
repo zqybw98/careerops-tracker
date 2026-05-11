@@ -18,6 +18,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Classify English, German, and Chinese recruiting emails as confirmation, recruiter reply, interview, assessment, rejection, follow-up, or other.
 - Extract company, role, location, contact, source link, deadlines, interview dates, and rejection reasons from pasted recruiting emails.
 - Suggest application status updates from email classification results.
+- Decide the recommended workflow action: update status, save a task, confirm a match, close a rejection, or create a new record.
 - Generate one-click next actions with priority, follow-up date, rationale, and suggested email template type.
 - Rank the top existing application matches for recruiting emails with scores, confidence, and match reasons.
 - Optionally sync recent recruiting emails from Gmail with local read-only OAuth.

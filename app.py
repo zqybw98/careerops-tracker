@@ -5,7 +5,7 @@ from datetime import date, timedelta
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from src.action_recommender import build_next_action_recommendation
+from src.action_recommender import build_next_action_recommendation, build_workflow_decision
 from src.analytics import (
     build_applications_per_month,
     build_average_waiting_days_by_company,
@@ -619,22 +619,40 @@ def render_email_assistant(applications: list[dict]) -> None:
         selected_id = label_id_map[selected_label]
         selected = next(item for item in applications if item["id"] == selected_id)
         recommendation = build_next_action_recommendation(result, details, selected)
+        workflow_decision = build_workflow_decision(
+            result,
+            details,
+            recommendation,
+            application=selected,
+            auto_match=match,
+            match_candidates=match_candidates,
+        )
 
-        action_cols = st.columns(4)
-        action_cols[0].metric("Priority", recommendation["priority"])
-        action_cols[1].metric("Follow-up", recommendation["follow_up_date"] or "-")
-        action_cols[2].metric("Draft type", recommendation["template_type"])
-        action_cols[3].metric("Target", f"{selected.get('company', '')}")
-        st.info(recommendation["next_action"])
-        st.caption("Why: " + recommendation["rationale"])
+        decision_cols = st.columns(5)
+        decision_cols[0].metric("Decision", workflow_decision["operation"])
+        decision_cols[1].metric("Review level", workflow_decision["review_level"])
+        decision_cols[2].metric("Priority", recommendation["priority"])
+        decision_cols[3].metric("Follow-up", recommendation["follow_up_date"] or "-")
+        decision_cols[4].metric("Target", f"{selected.get('company', '')}")
+        st.info(workflow_decision["decision"])
+        st.write("Record action:", workflow_decision["record_action"])
+        st.write("Status action:", workflow_decision["status_action"])
+        st.caption("Why: " + workflow_decision["rationale"])
         st.dataframe(
-            pd.DataFrame(build_workflow_steps(result, recommendation, has_match=bool(match))),
+            pd.DataFrame(
+                build_workflow_steps(
+                    result,
+                    recommendation,
+                    has_match=bool(match),
+                    workflow_decision=workflow_decision,
+                )
+            ),
             use_container_width=True,
             hide_index=True,
         )
 
         next_action_col, status_col = st.columns(2)
-        if next_action_col.button("Apply next action", type="primary"):
+        if next_action_col.button(workflow_decision["secondary_action_label"], type="primary"):
             _update_application_from_email_action(
                 selected_id,
                 selected,
@@ -646,7 +664,7 @@ def render_email_assistant(applications: list[dict]) -> None:
             st.success("Next action applied to the selected application.")
             st.rerun()
 
-        if status_col.button("Apply suggested status"):
+        if status_col.button(workflow_decision["primary_action_label"]):
             _update_application_from_email_action(
                 selected_id,
                 selected,
