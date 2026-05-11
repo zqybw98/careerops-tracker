@@ -26,6 +26,39 @@ def test_extracts_company_from_sender_domain() -> None:
     assert details["company"] == "SAP"
 
 
+def test_extracts_interview_context_fields_from_email_text() -> None:
+    details = extract_application_details(
+        subject="Interview invitation for QA Automation Intern",
+        body=(
+            "From: Talent Team <talent@bosch.com>\n"
+            "Company: Bosch\n"
+            "Role: QA Automation Intern\n"
+            "Location: Berlin\n"
+            "We would like to invite you to an interview on 15 May 2026.\n"
+            "Please confirm your availability by 2026-05-13."
+        ),
+    )
+
+    assert details["company"] == "Bosch"
+    assert details["role"] == "QA Automation Intern"
+    assert details["location"] == "Berlin"
+    assert details["interview_date"] == "2026-05-15"
+    assert details["deadline"] == "2026-05-13"
+    assert details["suggested_follow_up_date"] == "2026-05-13"
+
+
+def test_extracts_rejection_reason_from_email_text() -> None:
+    details = extract_application_details(
+        subject="Update regarding your application",
+        body=(
+            "From: Recruiting <jobs@example.com>\n"
+            "Unfortunately, the position has been filled and we will not proceed with your application."
+        ),
+    )
+
+    assert details["rejection_reason"] == "Position closed or filled."
+
+
 def test_matches_existing_application_from_email_context() -> None:
     applications = [
         {

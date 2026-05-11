@@ -41,13 +41,13 @@ flowchart LR
 | Component | Responsibility |
 | --- | --- |
 | `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. |
-| `src/analytics.py` | Builds decision-oriented metrics such as response rates, conversion, waiting days, weekly volume, and stale pipeline breakdowns. |
+| `src/analytics.py` | Builds decision-oriented metrics such as response rates, conversion, waiting days, monthly volume, and stale pipeline breakdowns. |
 | `src/database.py` | SQLite connection management, schema creation, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |
 | `src/csv_importer.py` | Normalizes English and Chinese CSV headers, dates, and statuses before import. |
 | `src/models.py` | Shared status options, application columns, and classification result shape. |
 | `src/dashboard.py` | Aggregates applications into total, weekly, waiting, interview, assessment, and rejection metrics. |
 | `src/email_classifier.py` | Rule-based recruiting email classification with confidence scores and suggested next actions. |
-| `src/email_parser.py` | Extracts company, role, contact, and source-link hints from pasted email text and matches existing records. |
+| `src/email_parser.py` | Extracts company, role, location, contact, source-link, deadline, interview-date, and rejection-reason hints from pasted email text and matches existing records. |
 | `src/email_templates.py` | Generates rule-based follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails. |
 | `src/gmail_client.py` | Optional local Gmail API client that fetches read-only recruiting emails for preview classification. |
 | `src/reminder_engine.py` | Generates follow-up, interview, assessment, stale-application, and saved-role reminders. |
@@ -146,11 +146,12 @@ matched keywords, suggested status, and suggested next action. If no rule
 matches, the email is classified as `Other` and routed to manual review.
 
 The email assistant also extracts lightweight application context from pasted
-email content. It looks for company names, role titles, sender/contact details,
-and source links, then compares those hints against existing application records.
-When a confident match is found, the matched application is pre-selected for
-the user. If no match exists, the same extracted context can prefill a new
-application record.
+email content. It looks for company names, role titles, locations,
+sender/contact details, source links, deadlines, interview dates, and rejection
+reasons, then compares those hints against existing application records. When a
+confident match is found, the matched application is pre-selected for the user.
+If no match exists, the same extracted context can prefill a new application
+record.
 
 ## Email Template Generation
 
@@ -184,7 +185,7 @@ record counts. `src/analytics.py` derives:
 - response rate by inferred source, such as LinkedIn, StepStone, or career page
 - interview/assessment conversion rate by inferred role type
 - average active waiting days by company
-- applications per calendar week
+- applications per calendar month
 - stale pipeline breakdown for open applications
 - saved-only versus submitted application volume
 
