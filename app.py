@@ -171,6 +171,12 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
         return
 
     df = pd.DataFrame(applications)
+
+    st.subheader("Recent Applications")
+    display_df = _with_display_sequence(df)
+    render_dashboard_recent_editor(applications, display_df)
+    st.divider()
+
     chart_col, reminder_col = st.columns([2, 1])
 
     with chart_col:
@@ -317,10 +323,6 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
         saved_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Applications")
         _style_bar_labels(saved_fig)
         st.plotly_chart(saved_fig, use_container_width=True)
-
-    st.subheader("Recent Applications")
-    display_df = _with_display_sequence(df)
-    render_dashboard_recent_editor(applications, display_df)
 
 
 def render_dashboard_recent_editor(applications: list[dict], display_df: pd.DataFrame) -> None:
