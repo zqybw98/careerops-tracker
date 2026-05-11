@@ -538,6 +538,7 @@ def render_email_assistant(applications: list[dict]) -> None:
     body = st.text_area("Email body", height=220)
 
     if st.button("Classify email"):
+        st.session_state.pop("email_create_success_message", None)
         result = classify_email(subject=subject, body=body)
         details = extract_application_details(subject=subject, body=body)
         match = match_application_from_email(
@@ -635,6 +636,9 @@ def render_email_assistant(applications: list[dict]) -> None:
 
     st.divider()
     st.subheader("Create Application from Email")
+    success_message = st.session_state.get("email_create_success_message")
+    if success_message:
+        st.success(success_message)
     with st.form("create_from_email_form", clear_on_submit=True):
         col_company, col_role, col_location = st.columns(3)
         company = col_company.text_input("Company", value=details.get("company", ""), key="email_create_company")
@@ -686,7 +690,9 @@ def render_email_assistant(applications: list[dict]) -> None:
                     },
                     source="email_assistant",
                 )
-                st.success("Application created from email.")
+                st.session_state["email_create_success_message"] = (
+                    f"Application created from email: {company.strip()} / {role.strip()}."
+                )
                 st.rerun()
 
 
