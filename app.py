@@ -29,6 +29,14 @@ from src.database import (
 )
 from src.demo_data import seed_sample_applications
 from src.email_classifier import classify_email
+from src.email_insights import (
+    build_context_rows,
+    build_email_analysis_summary,
+    build_keyword_rows,
+    build_match_reason_rows,
+    build_match_signal_rows,
+    build_workflow_steps,
+)
 from src.email_parser import extract_application_details, match_application_from_email
 from src.email_templates import TEMPLATE_TYPES, generate_email_template, suggest_template_type
 from src.gmail_client import (
@@ -571,47 +579,11 @@ def render_email_assistant(applications: list[dict]) -> None:
     match = st.session_state.get("last_application_match")
     create_recommendation = build_next_action_recommendation(result, details)
 
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Category", result["category"])
-    col_b.metric("Confidence", f"{result['confidence']:.0%}")
-    col_c.metric("Suggested status", result["suggested_status"])
-    st.write("Suggested next action:", result["suggested_next_action"])
-
-    if result["matched_keywords"]:
-        st.write("Matched keywords:", ", ".join(result["matched_keywords"]))
-
-    st.divider()
-    st.subheader("Extracted Application Context")
-    if any(details.values()):
-        detail_cols = st.columns(5)
-        detail_cols[0].metric("Company", details.get("company") or "-")
-        detail_cols[1].metric("Role", details.get("role") or "-")
-        detail_cols[2].metric("Location", details.get("location") or "-")
-        detail_cols[3].metric("Contact", details.get("contact") or "-")
-        detail_cols[4].metric("Source link", "Found" if details.get("source_link") else "-")
-
-        extracted_rows = _email_detail_rows(details)
-        if extracted_rows:
-            st.dataframe(pd.DataFrame(extracted_rows), use_container_width=True, hide_index=True)
-        if details.get("source_link"):
-            st.write("Source link:", details["source_link"])
-    else:
-        st.info("No structured application context could be extracted automatically.")
-
-    if match:
-        confidence = match.get("confidence")
-        confidence_label = f", confidence {confidence:.0%}" if isinstance(confidence, float) else ""
-        st.success(
-            f"Best application match: {match['company']} / {match['role']} (score {match['score']}{confidence_label})"
-        )
-        if match["reasons"]:
-            st.caption("Match reason: " + ", ".join(match["reasons"]))
-    elif applications:
-        st.warning("No confident application match found. You can select one manually or create a new record.")
+    render_email_analysis_report(result, details, match, create_recommendation, has_applications=bool(applications))
 
     if applications:
         st.divider()
-        st.subheader("Apply Suggestion")
+        st.subheader("Recommended Workflow")
         label_id_map = _application_label_id_map(applications)
         labels = list(label_id_map.keys())
         default_index = _matched_label_index(labels, label_id_map, match)
@@ -625,7 +597,6 @@ def render_email_assistant(applications: list[dict]) -> None:
         selected = next(item for item in applications if item["id"] == selected_id)
         recommendation = build_next_action_recommendation(result, details, selected)
 
-        st.subheader("Smart Next Action")
         action_cols = st.columns(4)
         action_cols[0].metric("Priority", recommendation["priority"])
         action_cols[1].metric("Follow-up", recommendation["follow_up_date"] or "-")
@@ -633,6 +604,11 @@ def render_email_assistant(applications: list[dict]) -> None:
         action_cols[3].metric("Target", f"{selected.get('company', '')}")
         st.info(recommendation["next_action"])
         st.caption("Why: " + recommendation["rationale"])
+        st.dataframe(
+            pd.DataFrame(build_workflow_steps(result, recommendation, has_match=bool(match))),
+            use_container_width=True,
+            hide_index=True,
+        )
 
         next_action_col, status_col = st.columns(2)
         if next_action_col.button("Apply next action", type="primary"):
@@ -723,6 +699,75 @@ def render_email_assistant(applications: list[dict]) -> None:
                     f"Application created from email: {company.strip()} / {role.strip()}."
                 )
                 st.rerun()
+
+
+def render_email_analysis_report(
+    result: dict,
+    details: dict[str, str],
+    match: dict | None,
+    recommendation: dict[str, str],
+    has_applications: bool,
+) -> None:
+    summary = build_email_analysis_summary(result, details, match)
+    classification_confidence = float(result.get("confidence") or 0)
+
+    st.subheader("Email Analysis")
+    with st.container(border=True):
+        summary_cols = st.columns(4)
+        summary_cols[0].metric("Email type", result["category"])
+        summary_cols[1].metric("Confidence", summary["confidence_label"], f"{classification_confidence:.0%}")
+        summary_cols[2].metric("Suggested status", result["suggested_status"])
+        summary_cols[3].metric("Context fields", summary["detected_context"])
+        st.caption(summary["confidence_description"])
+        st.info(summary["decision"])
+
+    evidence_col, context_col = st.columns([1, 1])
+    with evidence_col:
+        st.markdown("**Classification Evidence**")
+        st.write("Suggested next action:", result["suggested_next_action"])
+        keyword_rows = build_keyword_rows(result)
+        if keyword_rows:
+            st.dataframe(pd.DataFrame(keyword_rows), use_container_width=True, hide_index=True, height=160)
+        else:
+            st.caption("No specific recruiting keywords were matched.")
+
+    with context_col:
+        st.markdown("**Extracted Application Context**")
+        st.dataframe(
+            pd.DataFrame(build_context_rows(details)),
+            use_container_width=True,
+            hide_index=True,
+            height=260,
+        )
+        if details.get("source_link"):
+            st.write("Source link:", details["source_link"])
+
+    st.markdown("**Application Match**")
+    if match:
+        match_confidence = float(match.get("confidence") or 0)
+        st.success(f"Best match: {match['company']} / {match['role']}")
+        match_cols = st.columns(4)
+        match_cols[0].metric("Match status", summary["match_label"])
+        match_cols[1].metric("Match confidence", f"{match_confidence:.0%}")
+        match_cols[2].metric("Match score", match["score"])
+        match_cols[3].metric("Workflow priority", recommendation["priority"])
+
+        reason_col, signal_col = st.columns([2, 1])
+        with reason_col:
+            reason_rows = build_match_reason_rows(match)
+            if reason_rows:
+                st.dataframe(pd.DataFrame(reason_rows), use_container_width=True, hide_index=True, height=180)
+        with signal_col:
+            st.dataframe(
+                pd.DataFrame(build_match_signal_rows(match)),
+                use_container_width=True,
+                hide_index=True,
+                height=180,
+            )
+    elif has_applications:
+        st.warning("No confident application match found. Select one manually below or create a new record.")
+    else:
+        st.info("No existing applications are available yet. Use the extracted context to create a new record.")
 
 
 def render_email_templates(applications: list[dict]) -> None:
@@ -984,20 +1029,6 @@ def _update_application_from_email_action(
         },
         source="email_assistant" if apply_status else "email_next_action",
     )
-
-
-def _email_detail_rows(details: dict[str, str]) -> list[dict[str, str]]:
-    rows = []
-    for label, key in [
-        ("Interview date", "interview_date"),
-        ("Deadline", "deadline"),
-        ("Suggested follow-up", "suggested_follow_up_date"),
-        ("Rejection reason", "rejection_reason"),
-    ]:
-        value = details.get(key, "")
-        if value:
-            rows.append({"Field": label, "Value": value})
-    return rows
 
 
 def _build_next_action_note(recommendation: dict[str, str]) -> str:
