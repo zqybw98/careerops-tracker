@@ -84,3 +84,76 @@ def test_matches_existing_application_from_email_context() -> None:
     assert match is not None
     assert match["application_id"] == 11
     assert match["score"] >= 5
+
+
+def test_matches_existing_application_with_domain_and_partial_role_context() -> None:
+    applications = [
+        {
+            "id": 20,
+            "company": "SAP",
+            "role": "Werkstudent Quality AI Engineering",
+            "application_date": "2026-04-30",
+            "status": "Applied",
+            "source_link": "https://jobs.sap.com/job/quality-ai",
+        },
+        {
+            "id": 21,
+            "company": "SAP",
+            "role": "Data Analyst Intern",
+            "application_date": "2026-05-01",
+            "status": "Applied",
+            "source_link": "https://jobs.sap.com/job/data",
+        },
+    ]
+
+    match = match_application_from_email(
+        applications,
+        subject="Next steps for your Quality AI Engineering application",
+        body="From: SAP Careers <careers@sap.com>\nWe would like to continue with your application.",
+    )
+
+    assert match is not None
+    assert match["application_id"] == 20
+    assert "sender or source domain matches company identity" in match["reasons"]
+
+
+def test_does_not_auto_match_ambiguous_company_only_email() -> None:
+    applications = [
+        {"id": 30, "company": "SAP", "role": "QA Engineer", "status": "Applied"},
+        {"id": 31, "company": "SAP", "role": "Data Analyst", "status": "Applied"},
+    ]
+
+    match = match_application_from_email(
+        applications,
+        subject="Application update",
+        body="From: SAP Careers <careers@sap.com>\nThank you for your application at SAP.",
+    )
+
+    assert match is None
+
+
+def test_prefers_active_application_when_email_intent_is_not_closed() -> None:
+    applications = [
+        {
+            "id": 40,
+            "company": "Bosch",
+            "role": "QA Automation Intern",
+            "status": "Rejected",
+        },
+        {
+            "id": 41,
+            "company": "Bosch",
+            "role": "QA Automation Intern",
+            "status": "Applied",
+        },
+    ]
+
+    match = match_application_from_email(
+        applications,
+        subject="Interview invitation for QA Automation Intern",
+        body="From: Talent Team <talent@bosch.com>\nWe would like to invite you to an interview.",
+    )
+
+    assert match is not None
+    assert match["application_id"] == 41
+    assert "interview email fits an active application" in match["reasons"]

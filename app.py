@@ -595,7 +595,11 @@ def render_email_assistant(applications: list[dict]) -> None:
         st.info("No structured application context could be extracted automatically.")
 
     if match:
-        st.success(f"Best application match: {match['company']} / {match['role']} (score {match['score']})")
+        confidence = match.get("confidence")
+        confidence_label = f", confidence {confidence:.0%}" if isinstance(confidence, float) else ""
+        st.success(
+            f"Best application match: {match['company']} / {match['role']} (score {match['score']}{confidence_label})"
+        )
         if match["reasons"]:
             st.caption("Match reason: " + ", ".join(match["reasons"]))
     elif applications:

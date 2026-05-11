@@ -153,6 +153,13 @@ confident match is found, the matched application is pre-selected for the user.
 If no match exists, the same extracted context can prefill a new application
 record.
 
+Existing-application matching uses an explainable score rather than a single
+string comparison. The matcher combines company identity, role-title similarity,
+role keyword overlap, sender/source domain hints, location hints, and status
+context. It also uses a minimum score and an ambiguity margin so company-only
+emails from employers with multiple open roles are routed to manual selection
+instead of being applied to the wrong record.
+
 ## Email Template Generation
 
 The Templates tab generates editable, rule-based career email drafts from an

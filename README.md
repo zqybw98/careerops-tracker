@@ -18,7 +18,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Classify recruiting emails as confirmation, recruiter reply, interview, assessment, rejection, follow-up, or other.
 - Extract company, role, location, contact, source link, deadlines, interview dates, and rejection reasons from pasted recruiting emails.
 - Suggest application status updates from email classification results.
-- Match recruiting emails to existing applications or create a new application from email context.
+- Match recruiting emails to existing applications with company, role, sender-domain, source-domain, status-context, and ambiguity checks.
 - Optionally sync recent recruiting emails from Gmail with local read-only OAuth.
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
 - Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails.

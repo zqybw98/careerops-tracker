@@ -3,6 +3,12 @@ from __future__ import annotations
 import re
 from datetime import date
 from typing import Any
+from urllib.parse import urlparse
+
+from src.models import CLOSED_STATUSES
+
+MATCH_THRESHOLD = 6
+AMBIGUOUS_MATCH_MARGIN = 2
 
 GENERIC_EMAIL_DOMAINS = {
     "gmail",
@@ -152,50 +158,109 @@ def match_application_from_email(
         return None
 
     details = extracted_details or extract_application_details(subject, body)
-    text = _normalize_text(f"{subject}\n{body} {details.get('company', '')} {details.get('role', '')}")
-    scored_matches = [_score_application_match(application, text, details) for application in applications]
-    scored_matches = [match for match in scored_matches if match["score"] >= 3]
+    raw_email_text = _clean_text(f"{subject}\n{body}")
+    normalized_text = _normalize_text(f"{raw_email_text} {details.get('company', '')} {details.get('role', '')}")
+    scored_matches = [
+        _score_application_match(application, raw_email_text, normalized_text, details) for application in applications
+    ]
+    scored_matches = [match for match in scored_matches if match["score"] >= MATCH_THRESHOLD]
     if not scored_matches:
         return None
 
-    return max(scored_matches, key=lambda match: match["score"])
+    sorted_matches = sorted(scored_matches, key=_match_sort_key, reverse=True)
+    if len(sorted_matches) > 1 and _is_ambiguous_match(sorted_matches[0], sorted_matches[1]):
+        return None
+
+    return sorted_matches[0]
 
 
 def _score_application_match(
     application: dict[str, Any],
+    raw_email_text: str,
     normalized_email_text: str,
     details: dict[str, str],
 ) -> dict[str, Any]:
     company = str(application.get("company", ""))
     role = str(application.get("role", ""))
     score = 0
+    company_signal = 0
+    role_signal = 0
+    domain_signal = 0
+    status_signal = 0
     reasons: list[str] = []
 
     if _contains_phrase(normalized_email_text, company):
-        score += 5
+        company_signal = 6
+        score += company_signal
         reasons.append("company name appears in email")
-    elif details.get("company") and _identity(details["company"]) == _identity(company):
-        score += 5
-        reasons.append("extracted company matches existing application")
+    elif details.get("company"):
+        company_similarity = _token_similarity(details["company"], company)
+        if _identity(details["company"]) == _identity(company):
+            company_signal = 6
+            score += company_signal
+            reasons.append("extracted company matches existing application")
+        elif company_similarity >= 0.6:
+            company_signal = 4
+            score += company_signal
+            reasons.append("extracted company is similar to existing application")
 
     if _contains_phrase(normalized_email_text, role):
-        score += 6
+        role_signal = 7
+        score += role_signal
         reasons.append("role title appears in email")
-    elif details.get("role") and _role_similarity(details["role"], role) >= 0.5:
-        score += 4
-        reasons.append("extracted role is similar to existing role")
+    elif details.get("role"):
+        extracted_role_similarity = _role_similarity(details["role"], role)
+        if extracted_role_similarity >= 0.8:
+            role_signal = 6
+            score += role_signal
+            reasons.append("extracted role strongly matches existing role")
+        elif extracted_role_similarity >= 0.5:
+            role_signal = 4
+            score += role_signal
+            reasons.append("extracted role is similar to existing role")
 
     overlap = _role_similarity(role, normalized_email_text)
-    if overlap >= 0.4:
+    if overlap >= 0.6:
+        role_signal = max(role_signal, 4)
+        score += 4
+        reasons.append("strong role keyword overlap with email text")
+    elif overlap >= 0.4:
+        role_signal = max(role_signal, 2)
         score += 2
         reasons.append("role keywords overlap with email text")
+
+    domain_score, domain_reasons = _score_domain_match(application, raw_email_text, details)
+    domain_signal = domain_score
+    score += domain_score
+    reasons.extend(domain_reasons)
+
+    status_score, status_reasons = _score_status_context(application, normalized_email_text, details)
+    status_signal = status_score
+    score += status_score
+    reasons.extend(status_reasons)
+
+    if details.get("location") and _identity(details["location"]) == _identity(str(application.get("location", ""))):
+        score += 1
+        reasons.append("location matches existing application")
+
+    score = max(score, 0)
+    confidence = min(0.95, round(score / 18, 2))
+    strong_match = (company_signal >= 4 and role_signal >= 4) or (domain_signal >= 3 and role_signal >= 4)
 
     return {
         "application_id": application.get("id"),
         "company": company,
         "role": role,
         "score": score,
+        "confidence": confidence,
         "reasons": reasons,
+        "strong_match": strong_match,
+        "signals": {
+            "company": company_signal,
+            "role": role_signal,
+            "domain": domain_signal,
+            "status": status_signal,
+        },
     }
 
 
@@ -218,6 +283,112 @@ def _extract_company(text: str) -> str:
         candidate = _trim_candidate(candidate)
         if candidate:
             return candidate
+
+    return ""
+
+
+def _match_sort_key(match: dict[str, Any]) -> tuple[int, bool, int]:
+    return (
+        int(match["score"]),
+        bool(match.get("strong_match")),
+        int(match.get("application_id") or 0),
+    )
+
+
+def _is_ambiguous_match(top_match: dict[str, Any], second_match: dict[str, Any]) -> bool:
+    margin = int(top_match["score"]) - int(second_match["score"])
+    return margin < AMBIGUOUS_MATCH_MARGIN and not bool(top_match.get("strong_match"))
+
+
+def _score_domain_match(
+    application: dict[str, Any],
+    raw_email_text: str,
+    details: dict[str, str],
+) -> tuple[int, list[str]]:
+    score = 0
+    reasons: list[str] = []
+    email_domains = _email_domains(raw_email_text, details)
+    application_domains = _application_domains(application)
+
+    if email_domains and application_domains and email_domains & application_domains:
+        score += 4
+        reasons.append("email domain matches existing source or contact domain")
+
+    company = str(application.get("company", ""))
+    for domain in email_domains:
+        if _domain_matches_company(domain, company):
+            score += 3
+            reasons.append("sender or source domain matches company identity")
+            break
+
+    return score, reasons
+
+
+def _score_status_context(
+    application: dict[str, Any],
+    normalized_email_text: str,
+    details: dict[str, str],
+) -> tuple[int, list[str]]:
+    intent = _infer_email_intent(normalized_email_text, details)
+    status = str(application.get("status", "") or "Applied")
+    if not intent:
+        return 0, []
+
+    if intent == "rejection":
+        if status in CLOSED_STATUSES:
+            return -1, ["application is already closed"]
+        return 2, ["email outcome can close an active application"]
+
+    if status in CLOSED_STATUSES:
+        return -3, ["closed application is less likely for this email"]
+
+    if intent == "interview" and status in {"Applied", "Confirmation Received", "Follow-up Needed"}:
+        return 2, ["interview email fits an active application"]
+    if intent == "assessment" and status in {"Applied", "Confirmation Received", "Follow-up Needed"}:
+        return 2, ["assessment email fits an active application"]
+    if intent == "confirmation" and status in {"Saved", "Applied"}:
+        return 1, ["confirmation email fits an early-stage application"]
+    return 0, []
+
+
+def _infer_email_intent(normalized_email_text: str, details: dict[str, str]) -> str:
+    if details.get("rejection_reason") or any(
+        keyword in normalized_email_text
+        for keyword in [
+            "unfortunately",
+            "not proceed",
+            "not moving forward",
+            "decided not to continue",
+            "we regret",
+            "leider",
+            "absage",
+        ]
+    ):
+        return "rejection"
+
+    if details.get("interview_date") or any(
+        keyword in normalized_email_text
+        for keyword in ["interview", "video interview", "phone interview", "technical interview", "screening call"]
+    ):
+        return "interview"
+
+    if any(
+        keyword in normalized_email_text
+        for keyword in ["assessment", "coding test", "coding challenge", "case study", "testaufgabe"]
+    ):
+        return "assessment"
+
+    if any(
+        keyword in normalized_email_text
+        for keyword in [
+            "thank you for your application",
+            "received your application",
+            "application has been received",
+            "we have received",
+            "bewerbung erhalten",
+        ]
+    ):
+        return "confirmation"
 
     return ""
 
@@ -269,6 +440,57 @@ def _extract_location(text: str) -> str:
 def _extract_first_url(text: str) -> str:
     match = re.search(r"https?://[^\s)>\]]+", text)
     return match.group(0).rstrip(".,") if match else ""
+
+
+def _email_domains(raw_email_text: str, details: dict[str, str]) -> set[str]:
+    domains: set[str] = set()
+    for value in [
+        raw_email_text,
+        details.get("contact", ""),
+        details.get("source_link", ""),
+    ]:
+        domains.update(_extract_domains_from_value(value))
+    return domains
+
+
+def _application_domains(application: dict[str, Any]) -> set[str]:
+    domains: set[str] = set()
+    for key in ["contact", "source_link"]:
+        domains.update(_extract_domains_from_value(str(application.get(key, "") or "")))
+    return domains
+
+
+def _extract_domains_from_value(value: str) -> set[str]:
+    domains = {_normalize_domain(match.group(1)) for match in re.finditer(r"[\w.+-]+@([\w.-]+\.[A-Za-z]{2,})", value)}
+
+    for match in re.finditer(r"https?://[^\s)>\]]+", value):
+        parsed = urlparse(match.group(0).rstrip(".,"))
+        if parsed.netloc:
+            domains.add(_normalize_domain(parsed.netloc))
+
+    return {domain for domain in domains if domain}
+
+
+def _normalize_domain(domain: str) -> str:
+    return domain.casefold().removeprefix("www.").split(":", 1)[0].strip()
+
+
+def _domain_matches_company(domain: str, company: str) -> bool:
+    domain_company = _domain_company_identity(domain)
+    if not domain_company:
+        return False
+
+    company_identity = _identity(company)
+    return domain_company in company_identity or _token_similarity(domain_company, company_identity) >= 0.5
+
+
+def _domain_company_identity(domain: str) -> str:
+    ignored_parts = {"com", "de", "net", "org", "io", "eu"}
+    for part in domain.casefold().split("."):
+        candidate = re.sub(r"[^a-z0-9]+", " ", part).strip()
+        if candidate and candidate not in GENERIC_EMAIL_DOMAINS and candidate not in ignored_parts:
+            return _identity(candidate)
+    return ""
 
 
 def _extract_context_date(text: str, keywords: tuple[str, ...]) -> str:
@@ -421,6 +643,14 @@ def _role_similarity(left: str, right: str) -> float:
     if not left_tokens or not right_tokens:
         return 0.0
     return len(left_tokens & right_tokens) / len(left_tokens)
+
+
+def _token_similarity(left: str, right: str) -> float:
+    left_tokens = _important_tokens(left)
+    right_tokens = _important_tokens(right)
+    if not left_tokens or not right_tokens:
+        return 0.0
+    return len(left_tokens & right_tokens) / max(len(left_tokens), len(right_tokens))
 
 
 def _important_tokens(value: str) -> set[str]:
