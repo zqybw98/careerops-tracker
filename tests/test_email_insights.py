@@ -4,6 +4,7 @@ from src.email_insights import (
     build_email_analysis_summary,
     build_match_candidate_rows,
     build_match_signal_rows,
+    build_operation_summary,
     build_workflow_steps,
     confidence_band,
     confidence_gate,
@@ -144,3 +145,76 @@ def test_builds_match_candidate_rows() -> None:
     assert rows[0]["Band"] == "High"
     assert rows[1]["Recommendation"] == "Alternative"
     assert rows[1]["Confidence"] == "61%"
+
+
+def test_builds_operation_summary_for_selected_match() -> None:
+    classification = {
+        "category": "Interview Invitation",
+        "confidence": 0.91,
+        "suggested_status": "Interview Scheduled",
+    }
+    details = {"company": "Bosch", "role": "QA Intern"}
+    recommendation = {
+        "next_action": "Confirm availability with Bosch and prepare interview notes.",
+        "follow_up_date": "2026-05-15",
+    }
+    workflow_decision = {
+        "operation": "Prepare interview",
+        "review_level": "Low",
+        "record_action": "Update status and schedule preparation.",
+        "status_action": "Applied -> Interview Scheduled",
+    }
+    selected_application = {
+        "company": "Bosch",
+        "role": "QA Intern",
+    }
+    selected_match = {
+        "company": "Bosch",
+        "role": "QA Intern",
+        "confidence": 0.88,
+    }
+
+    summary = build_operation_summary(
+        classification,
+        details,
+        recommendation,
+        workflow_decision,
+        selected_application=selected_application,
+        selected_match=selected_match,
+    )
+
+    assert summary["headline"] == "Prepare interview - Bosch / QA Intern"
+    assert "Email classified as Interview Invitation (91%, Ready)" in summary["summary"]
+    assert "Existing record match: Bosch / QA Intern (88%)." in summary["summary"]
+    assert "Applied -> Interview Scheduled" in summary["audit_note"]
+
+
+def test_operation_summary_marks_candidate_review() -> None:
+    classification = {
+        "category": "Application Confirmation",
+        "confidence": 0.7,
+        "suggested_status": "Confirmation Received",
+    }
+    details = {"company": "SAP", "role": "QA Engineer"}
+    recommendation = {
+        "next_action": "Wait for response from SAP.",
+        "follow_up_date": "",
+    }
+    workflow_decision = {
+        "operation": "Confirm match",
+        "review_level": "Medium",
+        "record_action": "Confirm candidate before applying changes.",
+        "status_action": "Applied -> Confirmation Received",
+    }
+
+    summary = build_operation_summary(
+        classification,
+        details,
+        recommendation,
+        workflow_decision,
+        match_candidates=[{"application_id": 1}, {"application_id": 2}],
+    )
+
+    assert summary["gate"] == "Review required"
+    assert "2 possible existing match(es) were found" in summary["summary"]
+    assert "Target: SAP / QA Engineer" in summary["audit_note"]

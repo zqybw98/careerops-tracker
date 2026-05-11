@@ -37,6 +37,7 @@ from src.email_insights import (
     build_match_candidate_rows,
     build_match_reason_rows,
     build_match_signal_rows,
+    build_operation_summary,
     build_workflow_steps,
     confidence_gate,
 )
@@ -629,6 +630,15 @@ def render_email_assistant(applications: list[dict]) -> None:
             auto_match=match,
             match_candidates=match_candidates,
         )
+        operation_summary = build_operation_summary(
+            result,
+            details,
+            recommendation,
+            workflow_decision,
+            selected_application=selected,
+            selected_match=match,
+            match_candidates=match_candidates,
+        )
 
         decision_cols = st.columns(5)
         decision_cols[0].metric("Decision", workflow_decision["operation"])
@@ -642,6 +652,10 @@ def render_email_assistant(applications: list[dict]) -> None:
         st.caption("Why: " + workflow_decision["rationale"])
         if not workflow_decision["status_update_allowed"]:
             st.warning("Status update is disabled because the email is below the confidence threshold.")
+        with st.container(border=True):
+            st.markdown("**Operation Summary**")
+            st.write(operation_summary["summary"])
+            st.caption(operation_summary["audit_note"])
         st.dataframe(
             pd.DataFrame(
                 build_workflow_steps(
@@ -664,6 +678,7 @@ def render_email_assistant(applications: list[dict]) -> None:
                 details,
                 recommendation,
                 apply_status=False,
+                operation_summary=operation_summary,
             )
             st.success("Next action applied to the selected application.")
             st.rerun()
@@ -679,6 +694,7 @@ def render_email_assistant(applications: list[dict]) -> None:
                 details,
                 recommendation,
                 apply_status=True,
+                operation_summary=operation_summary,
             )
             st.success("Application updated from email classification.")
             st.rerun()
@@ -1077,10 +1093,13 @@ def _update_application_from_email_action(
     details: dict[str, str],
     recommendation: dict[str, str],
     apply_status: bool,
+    operation_summary: dict[str, str] | None = None,
 ) -> None:
     follow_up_date = recommendation["follow_up_date"] or selected.get("follow_up_date", "")
     notes = _append_note(selected.get("notes", ""), _build_email_note(result, details))
     notes = _append_note(notes, _build_next_action_note(recommendation))
+    if operation_summary:
+        notes = _append_note(notes, operation_summary["audit_note"])
 
     rejection_reason = selected.get("rejection_reason", "")
     if result["suggested_status"] == "Rejected" and not rejection_reason:

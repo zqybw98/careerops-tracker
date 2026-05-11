@@ -68,6 +68,51 @@ def build_email_analysis_summary(
     }
 
 
+def build_operation_summary(
+    classification: dict[str, Any],
+    details: dict[str, str],
+    recommendation: dict[str, str],
+    workflow_decision: dict[str, Any],
+    selected_application: dict[str, Any] | None = None,
+    selected_match: dict[str, Any] | None = None,
+    match_candidates: list[dict[str, Any]] | None = None,
+) -> dict[str, str]:
+    confidence = _coerce_float(classification.get("confidence"), default=0.0)
+    gate = confidence_gate(confidence)
+    category = str(classification.get("category") or "Other")
+    suggested_status = str(classification.get("suggested_status") or "Applied")
+    operation = str(workflow_decision.get("operation") or "Review email")
+    review_level = str(workflow_decision.get("review_level") or "Medium")
+    status_action = str(workflow_decision.get("status_action") or "No status change")
+    record_action = str(workflow_decision.get("record_action") or "Review the email.")
+    next_action = str(recommendation.get("next_action") or "Review the email manually.")
+    follow_up_date = str(recommendation.get("follow_up_date") or "")
+    target = _target_label(selected_application, details)
+    match_summary = _operation_match_summary(selected_match, match_candidates)
+
+    follow_up_sentence = f" Follow-up date: {follow_up_date}." if follow_up_date else ""
+    summary = (
+        f"{operation} for {target}. Email classified as {category} "
+        f"({confidence:.0%}, {gate['gate']}) with suggested status {suggested_status}. "
+        f"{match_summary} Recommended record action: {record_action}. "
+        f"Recommended next action: {next_action} Status action: {status_action}."
+        f"{follow_up_sentence}"
+    )
+    audit_note = (
+        f"Operation summary: {operation} | Review level: {review_level} | "
+        f"Email: {category} ({confidence:.0%}, gate: {gate['gate']}) | "
+        f"Target: {target} | Status action: {status_action} | Next action: {next_action}"
+    )
+
+    return {
+        "headline": f"{operation} - {target}",
+        "summary": summary,
+        "audit_note": audit_note,
+        "gate": gate["gate"],
+        "review_level": review_level,
+    }
+
+
 def confidence_band(value: object) -> dict[str, str]:
     confidence = _coerce_float(value, default=0.0)
     if confidence >= HIGH_CONFIDENCE_THRESHOLD:
@@ -266,6 +311,44 @@ def _summarize_reasons(match: dict[str, Any]) -> str:
     if not reasons:
         return "No strong evidence recorded"
     return "; ".join(reasons[:3])
+
+
+def _target_label(
+    selected_application: dict[str, Any] | None,
+    details: dict[str, str],
+) -> str:
+    if selected_application:
+        company = str(selected_application.get("company", "") or "").strip()
+        role = str(selected_application.get("role", "") or "").strip()
+    else:
+        company = details.get("company", "").strip()
+        role = details.get("role", "").strip()
+
+    if company and role:
+        return f"{company} / {role}"
+    if company:
+        return company
+    if role:
+        return role
+    return "unmatched application"
+
+
+def _operation_match_summary(
+    selected_match: dict[str, Any] | None,
+    match_candidates: list[dict[str, Any]] | None,
+) -> str:
+    if selected_match:
+        confidence = _coerce_float(selected_match.get("confidence"), default=0.0)
+        return (
+            f"Existing record match: {selected_match.get('company', '')} / "
+            f"{selected_match.get('role', '')} ({confidence:.0%})."
+        )
+
+    candidate_count = len(match_candidates or [])
+    if candidate_count:
+        return f"{candidate_count} possible existing match(es) were found and need confirmation."
+
+    return "No confident existing application match was found."
 
 
 def _workflow_step_two(workflow_decision: dict[str, Any] | None, has_match: bool) -> str:

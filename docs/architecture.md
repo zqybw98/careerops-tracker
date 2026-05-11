@@ -175,6 +175,12 @@ Status updates pass through a confidence gate: `>= 85%` is ready after quick
 review, `60% - 84%` requires explicit user confirmation, and `< 60%` blocks
 status updates so the user can only save a task or review manually.
 
+The same decision context is converted into an operation summary. This summary
+explains the classified email type, confidence gate, target application,
+matching evidence, status action, and next step. When an Email Assistant action
+is applied, the summary is appended to the application notes so later review can
+trace why the update happened.
+
 ## Email Template Generation
 
 The Templates tab generates editable, rule-based career email drafts from an
