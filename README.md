@@ -18,6 +18,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Classify recruiting emails as confirmation, recruiter reply, interview, assessment, rejection, follow-up, or other.
 - Extract company, role, location, contact, source link, deadlines, interview dates, and rejection reasons from pasted recruiting emails.
 - Suggest application status updates from email classification results.
+- Generate one-click next actions with priority, follow-up date, rationale, and suggested email template type.
 - Match recruiting emails to existing applications with company, role, sender-domain, source-domain, status-context, and ambiguity checks.
 - Optionally sync recent recruiting emails from Gmail with local read-only OAuth.
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
@@ -80,6 +81,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |       |-- tests.yml
 |       `-- release.yml
 |-- src/
+|   |-- action_recommender.py
 |   |-- analytics.py
 |   |-- database.py
 |   |-- csv_importer.py
@@ -92,6 +94,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- models.py
 |   `-- reminder_engine.py
 |-- tests/
+|   |-- test_action_recommender.py
 |   |-- test_analytics.py
 |   |-- test_application_service.py
 |   |-- test_csv_importer.py
@@ -191,8 +194,8 @@ before applying any suggested application updates. `credentials.json` and
 
 1. Add a job application.
 2. Paste a recruiting email into the Email Assistant.
-3. Review the detected category, confidence score, extracted application context, and suggested status.
-4. Apply the suggested update to a matched application or create a new application from the email.
+3. Review the detected category, confidence score, extracted application context, suggested status, and smart next action.
+4. Apply the next action or suggested status to a matched application, or create a new application from the email.
 5. Generate a follow-up, thank-you, outreach, or acknowledgement email from the Templates tab.
 6. Use the dashboard to monitor waiting applications, follow-up tasks, response rates, role conversion, and stale records.
 

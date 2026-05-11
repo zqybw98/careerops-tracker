@@ -5,6 +5,7 @@ from datetime import date, timedelta
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from src.action_recommender import build_next_action_recommendation
 from src.analytics import (
     build_applications_per_month,
     build_average_waiting_days_by_company,
@@ -566,6 +567,7 @@ def render_email_assistant(applications: list[dict]) -> None:
 
     details = st.session_state.get("last_email_details", {})
     match = st.session_state.get("last_application_match")
+    create_recommendation = build_next_action_recommendation(result, details)
 
     col_a, col_b, col_c = st.columns(3)
     col_a.metric("Category", result["category"])
@@ -619,37 +621,38 @@ def render_email_assistant(applications: list[dict]) -> None:
         )
         selected_id = label_id_map[selected_label]
         selected = next(item for item in applications if item["id"] == selected_id)
+        recommendation = build_next_action_recommendation(result, details, selected)
 
-        if st.button("Apply suggested status"):
-            follow_up_date = selected.get("follow_up_date", "")
-            suggested_follow_up_date = _email_follow_up_date(result, details)
-            if suggested_follow_up_date:
-                follow_up_date = suggested_follow_up_date
+        st.subheader("Smart Next Action")
+        action_cols = st.columns(4)
+        action_cols[0].metric("Priority", recommendation["priority"])
+        action_cols[1].metric("Follow-up", recommendation["follow_up_date"] or "-")
+        action_cols[2].metric("Draft type", recommendation["template_type"])
+        action_cols[3].metric("Target", f"{selected.get('company', '')}")
+        st.info(recommendation["next_action"])
+        st.caption("Why: " + recommendation["rationale"])
 
-            notes = selected.get("notes", "")
-            note_line = _build_email_note(result, details)
-            updated_notes = _append_note(notes, note_line)
-            contact = selected.get("contact", "") or details.get("contact", "")
-            location = selected.get("location", "") or details.get("location", "")
-            source_link = selected.get("source_link", "") or details.get("source_link", "")
-            rejection_reason = selected.get("rejection_reason", "")
-            if result["suggested_status"] == "Rejected" and not rejection_reason:
-                rejection_reason = details.get("rejection_reason") or "Rejected based on classified recruiting email."
-
-            update_application(
+        next_action_col, status_col = st.columns(2)
+        if next_action_col.button("Apply next action", type="primary"):
+            _update_application_from_email_action(
                 selected_id,
-                {
-                    **selected,
-                    "status": result["suggested_status"],
-                    "location": location,
-                    "contact": contact,
-                    "source_link": source_link,
-                    "next_action": result["suggested_next_action"],
-                    "follow_up_date": follow_up_date,
-                    "notes": updated_notes,
-                    "rejection_reason": rejection_reason,
-                },
-                source="email_assistant",
+                selected,
+                result,
+                details,
+                recommendation,
+                apply_status=False,
+            )
+            st.success("Next action applied to the selected application.")
+            st.rerun()
+
+        if status_col.button("Apply suggested status"):
+            _update_application_from_email_action(
+                selected_id,
+                selected,
+                result,
+                details,
+                recommendation,
+                apply_status=True,
             )
             st.success("Application updated from email classification.")
             st.rerun()
@@ -671,17 +674,21 @@ def render_email_assistant(applications: list[dict]) -> None:
             STATUS_OPTIONS.index(result["suggested_status"]) if result["suggested_status"] in STATUS_OPTIONS else 1
         )
         status = col_status.selectbox("Status", STATUS_OPTIONS, index=status_index, key="email_create_status")
-        follow_up_date = _email_follow_up_date(result, details)
+        follow_up_date = create_recommendation["follow_up_date"]
         keep_follow_up = col_follow_up.checkbox("Set suggested follow-up", value=bool(follow_up_date))
 
         source_link = st.text_input("Source link", value=details.get("source_link", ""), key="email_create_source")
         contact = st.text_input("Contact", value=details.get("contact", ""), key="email_create_contact")
         next_action = st.text_input(
             "Next action",
-            value=result["suggested_next_action"],
+            value=create_recommendation["next_action"],
             key="email_create_next_action",
         )
-        notes = st.text_area("Notes", value=_build_email_note(result, details), key="email_create_notes")
+        notes = st.text_area(
+            "Notes",
+            value=_append_note(_build_email_note(result, details), _build_next_action_note(create_recommendation)),
+            key="email_create_notes",
+        )
         rejection_reason = st.text_area(
             "Rejection reason",
             value=(details.get("rejection_reason") or "Rejected based on classified recruiting email.")
@@ -706,7 +713,7 @@ def render_email_assistant(applications: list[dict]) -> None:
                         "notes": notes,
                         "rejection_reason": rejection_reason,
                         "next_action": next_action,
-                        "follow_up_date": follow_up_date if keep_follow_up else "",
+                        "follow_up_date": create_recommendation["follow_up_date"] if keep_follow_up else "",
                     },
                     source="email_assistant",
                 )
@@ -944,15 +951,37 @@ def _matched_label_index(
     return 0
 
 
-def _email_follow_up_date(result: dict, details: dict[str, str]) -> str:
-    extracted_date = details.get("suggested_follow_up_date", "")
-    if extracted_date and _text_to_date(extracted_date):
-        return extracted_date
+def _update_application_from_email_action(
+    selected_id: int,
+    selected: dict,
+    result: dict,
+    details: dict[str, str],
+    recommendation: dict[str, str],
+    apply_status: bool,
+) -> None:
+    follow_up_date = recommendation["follow_up_date"] or selected.get("follow_up_date", "")
+    notes = _append_note(selected.get("notes", ""), _build_email_note(result, details))
+    notes = _append_note(notes, _build_next_action_note(recommendation))
 
-    suggested_days = result.get("suggested_follow_up_days")
-    if suggested_days is not None:
-        return (date.today() + timedelta(days=int(suggested_days))).isoformat()
-    return ""
+    rejection_reason = selected.get("rejection_reason", "")
+    if result["suggested_status"] == "Rejected" and not rejection_reason:
+        rejection_reason = details.get("rejection_reason") or "Rejected based on classified recruiting email."
+
+    update_application(
+        selected_id,
+        {
+            **selected,
+            "status": result["suggested_status"] if apply_status else selected.get("status", "Applied"),
+            "location": selected.get("location", "") or details.get("location", ""),
+            "contact": selected.get("contact", "") or details.get("contact", ""),
+            "source_link": selected.get("source_link", "") or details.get("source_link", ""),
+            "next_action": recommendation["next_action"],
+            "follow_up_date": follow_up_date,
+            "notes": notes,
+            "rejection_reason": rejection_reason,
+        },
+        source="email_assistant" if apply_status else "email_next_action",
+    )
 
 
 def _email_detail_rows(details: dict[str, str]) -> list[dict[str, str]]:
@@ -967,6 +996,20 @@ def _email_detail_rows(details: dict[str, str]) -> list[dict[str, str]]:
         if value:
             rows.append({"Field": label, "Value": value})
     return rows
+
+
+def _build_next_action_note(recommendation: dict[str, str]) -> str:
+    note_parts = [
+        f"Smart next action generated: {recommendation['next_action']}",
+        f"Priority: {recommendation['priority']}",
+    ]
+    if recommendation["follow_up_date"]:
+        note_parts.append(f"Follow-up date: {recommendation['follow_up_date']}")
+    if recommendation["template_type"]:
+        note_parts.append(f"Suggested template: {recommendation['template_type']}")
+    if recommendation["rationale"]:
+        note_parts.append(f"Rationale: {recommendation['rationale']}")
+    return " | ".join(note_parts)
 
 
 def _build_email_note(result: dict, details: dict[str, str]) -> str:
@@ -1075,10 +1118,8 @@ def _apply_selected_gmail_suggestions(
 def _apply_gmail_preview(preview: dict, applications: list[dict]) -> str:
     if preview["matched_application_id"]:
         selected = next(item for item in applications if int(item["id"]) == int(preview["matched_application_id"]))
-        follow_up_date = selected.get("follow_up_date", "")
-        suggested_follow_up_date = _email_follow_up_date(preview["classification"], preview["details"])
-        if suggested_follow_up_date:
-            follow_up_date = suggested_follow_up_date
+        recommendation = build_next_action_recommendation(preview["classification"], preview["details"], selected)
+        follow_up_date = recommendation["follow_up_date"] or selected.get("follow_up_date", "")
 
         rejection_reason = selected.get("rejection_reason", "")
         if preview["suggested_status"] == "Rejected" and not rejection_reason:
@@ -1092,9 +1133,12 @@ def _apply_gmail_preview(preview: dict, applications: list[dict]) -> str:
                 "location": selected.get("location", "") or preview.get("location", ""),
                 "contact": selected.get("contact", "") or preview.get("contact", ""),
                 "source_link": selected.get("source_link", "") or preview.get("source_link", ""),
-                "next_action": preview["suggested_next_action"],
+                "next_action": recommendation["next_action"],
                 "follow_up_date": follow_up_date,
-                "notes": _append_note(selected.get("notes", ""), _build_gmail_note(preview)),
+                "notes": _append_note(
+                    _append_note(selected.get("notes", ""), _build_gmail_note(preview)),
+                    _build_next_action_note(recommendation),
+                ),
                 "rejection_reason": rejection_reason,
             },
             source="gmail_sync",
@@ -1104,6 +1148,7 @@ def _apply_gmail_preview(preview: dict, applications: list[dict]) -> str:
     if not preview.get("company") or not preview.get("role"):
         return "skipped"
 
+    recommendation = build_next_action_recommendation(preview["classification"], preview["details"])
     create_application(
         {
             "company": preview["company"],
@@ -1113,12 +1158,12 @@ def _apply_gmail_preview(preview: dict, applications: list[dict]) -> str:
             "status": preview["suggested_status"],
             "source_link": preview.get("source_link", ""),
             "contact": preview.get("contact", ""),
-            "notes": _build_gmail_note(preview),
+            "notes": _append_note(_build_gmail_note(preview), _build_next_action_note(recommendation)),
             "rejection_reason": (preview.get("rejection_reason") or "Rejected based on Gmail recruiting email.")
             if preview["suggested_status"] == "Rejected"
             else "",
-            "next_action": preview["suggested_next_action"],
-            "follow_up_date": _email_follow_up_date(preview["classification"], preview["details"]),
+            "next_action": recommendation["next_action"],
+            "follow_up_date": recommendation["follow_up_date"],
         },
         source="gmail_sync",
     )

@@ -41,6 +41,7 @@ flowchart LR
 | Component | Responsibility |
 | --- | --- |
 | `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. |
+| `src/action_recommender.py` | Converts classified emails and extracted context into prioritized next actions, follow-up dates, rationales, and suggested template types. |
 | `src/analytics.py` | Builds decision-oriented metrics such as response rates, conversion, waiting days, monthly volume, and stale pipeline breakdowns. |
 | `src/database.py` | SQLite connection management, schema creation, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |
 | `src/csv_importer.py` | Normalizes English and Chinese CSV headers, dates, and statuses before import. |
@@ -91,7 +92,7 @@ The MVP stores application records and traceability events in SQLite.
 | `event_type` | Event name such as `application_created`, `status_changed`, or `application_deleted`. |
 | `old_value` | Previous value or previous application summary. |
 | `new_value` | New value or new application summary. |
-| `source` | Actor/source such as `manual`, `csv_import`, `dashboard_inline_edit`, `email_assistant`, `gmail_sync`, `demo_data`, or `duplicate_cleanup`. |
+| `source` | Actor/source such as `manual`, `csv_import`, `dashboard_inline_edit`, `email_assistant`, `email_next_action`, `gmail_sync`, `demo_data`, or `duplicate_cleanup`. |
 | `created_at` | UTC timestamp when the event was recorded. |
 
 The database is local and ignored by Git (`data/*.db`), so sample data and tests
@@ -159,6 +160,13 @@ role keyword overlap, sender/source domain hints, location hints, and status
 context. It also uses a minimum score and an ambiguity margin so company-only
 emails from employers with multiple open roles are routed to manual selection
 instead of being applied to the wrong record.
+
+The action recommender turns the classified email and extracted fields into a
+single operational next step. It prioritizes actions such as interview
+preparation, assessment submission, recruiter replies, rejection review, or
+scheduled follow-up. Each recommendation includes priority, follow-up date,
+template type, and rationale, and can be applied to the selected application
+without changing status unless the user explicitly applies the suggested status.
 
 ## Email Template Generation
 
