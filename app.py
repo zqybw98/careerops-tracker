@@ -70,7 +70,7 @@ st.markdown(
     <style>
     .block-container {
         max-width: 1480px;
-        padding-top: 2rem;
+        padding-top: 3.25rem;
         padding-bottom: 3rem;
     }
     [data-testid="stSidebar"] {
@@ -93,14 +93,6 @@ st.markdown(
     }
     div[data-testid="stTabs"] button {
         font-weight: 600;
-    }
-    .app-kicker {
-        color: #9aa4b2;
-        font-size: 0.82rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        margin-bottom: 0.2rem;
     }
     div[data-testid="stDataFrame"] div[role="gridcell"],
     div[data-testid="stDataFrame"] div[role="columnheader"] {
@@ -148,7 +140,6 @@ def render_sidebar_navigation(applications: list[dict], reminders: list[dict]) -
 
 
 def render_app_header(workspace: str) -> None:
-    st.markdown('<div class="app-kicker">CareerOps Tracker</div>', unsafe_allow_html=True)
     st.title(workspace)
     st.caption("Job application tracking, email classification, and follow-up reminders.")
 
