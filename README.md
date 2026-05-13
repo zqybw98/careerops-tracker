@@ -74,6 +74,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 ```text
 .
 |-- app.py
+|-- CHANGELOG.md
 |-- requirements.txt
 |-- requirements-dev.txt
 |-- requirements-gmail.txt

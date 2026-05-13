@@ -53,7 +53,7 @@ area to the modules that implement it.
 | Activity traceability | Record creates, updates, imports, email-assistant actions, dashboard edits, duplicate cleanup, and deletes. | `src/database.py` |
 | Configurable rules | Tune category keywords, parser patterns, matching thresholds, rejection reason patterns, and reminder timing without changing core logic. | `config/`, `src/config_loader.py` |
 | Optional Gmail sync | Read recent recruiting emails locally with OAuth, preview classifications, and apply only user-approved actions. | `src/gmail_client.py`, `src/services/email_workflow.py` |
-| Engineering quality | Run versioned SQLite migrations, linting, formatting, type checks, pytest, pre-commit hooks, and GitHub Actions. | `migrations/`, `pyproject.toml`, `.pre-commit-config.yaml`, `.github/workflows/tests.yml`, `tests/` |
+| Engineering quality | Run versioned SQLite migrations, linting, formatting, type checks, pytest, pre-commit hooks, CI, and tag-based releases. | `migrations/`, `pyproject.toml`, `.pre-commit-config.yaml`, `.github/workflows/tests.yml`, `.github/workflows/release.yml`, `CHANGELOG.md`, `tests/` |
 
 ## Components
 
@@ -82,6 +82,8 @@ area to the modules that implement it.
 | `.pre-commit-config.yaml` | Local hooks for lint auto-fix, formatting, and type checks before commits. |
 | `.streamlit/config.toml` | Streamlit theme configuration used locally and in the hosted demo. |
 | `.github/workflows/tests.yml` | Runs lint, format, type checks, and pytest on push and pull requests. |
+| `.github/workflows/release.yml` | Creates tag-based GitHub Releases from matching `CHANGELOG.md` sections or GitHub-generated notes. |
+| `CHANGELOG.md` | Human-maintained release history used by the release workflow. |
 | `docs/deployment.md` | Deployment checklist for publishing the app on Streamlit Community Cloud. |
 
 ## Layering Direction
