@@ -113,8 +113,97 @@ def test_init_db_migrates_rejection_reason_column(tmp_path: Path) -> None:
 
     with sqlite3.connect(db_path) as connection:
         columns = {row[1] for row in connection.execute("PRAGMA table_info(applications)").fetchall()}
+        versions = [row[0] for row in connection.execute("SELECT version FROM schema_version ORDER BY version")]
 
     assert "rejection_reason" in columns
+    assert versions == [1, 2]
+
+
+def test_init_db_records_versioned_migrations(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+
+    init_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                """
+                SELECT name
+                FROM sqlite_master
+                WHERE type = 'table'
+                """
+            )
+        }
+        application_columns = {row[1] for row in connection.execute("PRAGMA table_info(applications)").fetchall()}
+        versions = connection.execute(
+            """
+            SELECT version, name
+            FROM schema_version
+            ORDER BY version
+            """
+        ).fetchall()
+
+    assert {"applications", "application_events", "schema_version"} <= tables
+    assert "rejection_reason" in application_columns
+    assert versions == [(1, "001_init"), (2, "002_add_rejection_reason")]
+
+
+def test_init_db_baselines_existing_schema_without_rerunning_migrations(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            CREATE TABLE applications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company TEXT NOT NULL,
+                role TEXT NOT NULL,
+                location TEXT,
+                application_date TEXT,
+                status TEXT NOT NULL DEFAULT 'Applied',
+                source_link TEXT,
+                contact TEXT,
+                notes TEXT,
+                rejection_reason TEXT,
+                next_action TEXT,
+                follow_up_date TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE application_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                application_id INTEGER NOT NULL,
+                event_type TEXT NOT NULL,
+                old_value TEXT,
+                new_value TEXT,
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+
+    init_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        versions = connection.execute(
+            """
+            SELECT version, name
+            FROM schema_version
+            ORDER BY version
+            """
+        ).fetchall()
+        rejection_columns = [
+            row[1]
+            for row in connection.execute("PRAGMA table_info(applications)").fetchall()
+            if row[1] == "rejection_reason"
+        ]
+
+    assert versions == [(1, "001_init"), (2, "002_add_rejection_reason")]
+    assert rejection_columns == ["rejection_reason"]
 
 
 def test_sync_applications_updates_existing_records(tmp_path: Path) -> None:

@@ -43,9 +43,10 @@ flowchart LR
 | Component | Responsibility |
 | --- | --- |
 | `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. Business workflows are delegated to services. |
+| `migrations/` | Ordered SQLite schema migrations applied at startup and tracked in `schema_version`. |
 | `src/action_recommender.py` | Converts classified emails and extracted context into workflow decisions, prioritized next actions, follow-up dates, rationales, and suggested template types. |
 | `src/analytics.py` | Builds decision-oriented metrics such as response rates, conversion, waiting days, monthly volume, and stale pipeline breakdowns. |
-| `src/database.py` | SQLite connection management, schema creation, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |
+| `src/database.py` | SQLite connection management, migration execution, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |
 | `src/csv_importer.py` | Normalizes English and Chinese CSV headers, dates, and statuses before import. |
 | `src/models.py` | Shared status options, application columns, and classification result shape. |
 | `src/dashboard.py` | Aggregates applications into total, weekly, waiting, interview, assessment, and rejection metrics. |
@@ -81,6 +82,12 @@ is useful as the assistant grows beyond pasted email classification.
 
 The MVP stores application records and traceability events in SQLite.
 
+Schema changes are versioned through lightweight SQL migrations in
+`migrations/`. At startup, `init_db()` creates the `schema_version` table, reads
+applied versions, and applies missing migrations in filename order. Existing
+databases that already satisfy a migration are baselined by recording the
+version without rerunning unsafe `ALTER TABLE` statements.
+
 ### `applications`
 
 | Field | Purpose |
@@ -111,6 +118,14 @@ The MVP stores application records and traceability events in SQLite.
 | `new_value` | New value or new application summary. |
 | `source` | Actor/source such as `manual`, `csv_import`, `dashboard_inline_edit`, `email_assistant`, `email_next_action`, `gmail_sync`, `demo_data`, or `duplicate_cleanup`. |
 | `created_at` | UTC timestamp when the event was recorded. |
+
+### `schema_version`
+
+| Field | Purpose |
+| --- | --- |
+| `version` | Numeric migration version from the SQL filename. |
+| `name` | Migration filename stem, for example `002_add_rejection_reason`. |
+| `applied_at` | UTC timestamp when the migration was applied or baselined. |
 
 The database is local and ignored by Git (`data/*.db`), so sample data and tests
 can be shared without exposing personal job search records.

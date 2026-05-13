@@ -27,6 +27,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
 - Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails.
 - Keep an activity log for application creation, updates, imports, email-assistant actions, and cleanup.
+- Apply versioned SQLite migrations through a lightweight `schema_version` table.
 - View a Streamlit dashboard with application metrics and status charts.
 - Edit key application fields directly from the dashboard recent-applications table.
 - Analyze response rate by source, monthly application volume, role-type conversion, waiting days, and stale pipeline risk.
@@ -77,6 +78,9 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |-- requirements-gmail.txt
 |-- pyproject.toml
 |-- .pre-commit-config.yaml
+|-- migrations/
+|   |-- 001_init.sql
+|   `-- 002_add_rejection_reason.sql
 |-- .streamlit/
 |   `-- config.toml
 |-- .github/

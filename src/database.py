@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,14 @@ from typing import Any
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
 
 DEFAULT_DB_PATH = Path("data/applications.db")
+MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
+
+
+@dataclass(frozen=True)
+class Migration:
+    version: int
+    name: str
+    path: Path
 
 
 def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
@@ -20,40 +29,7 @@ def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
 
 def init_db(db_path: Path | str = DEFAULT_DB_PATH) -> None:
     with get_connection(db_path) as connection:
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS applications (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                company TEXT NOT NULL,
-                role TEXT NOT NULL,
-                location TEXT,
-                application_date TEXT,
-                status TEXT NOT NULL DEFAULT 'Applied',
-                source_link TEXT,
-                contact TEXT,
-                notes TEXT,
-                rejection_reason TEXT,
-                next_action TEXT,
-                follow_up_date TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        _ensure_application_columns(connection)
-        connection.execute(
-            """
-            CREATE TABLE IF NOT EXISTS application_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                application_id INTEGER NOT NULL,
-                event_type TEXT NOT NULL,
-                old_value TEXT,
-                new_value TEXT,
-                source TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
-            """
-        )
+        _apply_migrations(connection)
         connection.commit()
 
 
@@ -269,17 +245,91 @@ def _clean_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
-def _ensure_application_columns(connection: sqlite3.Connection) -> None:
-    existing_columns = {
-        str(row["name"])
-        for row in connection.execute(
-            """
-            PRAGMA table_info(applications)
-            """
-        ).fetchall()
-    }
-    if "rejection_reason" not in existing_columns:
-        connection.execute("ALTER TABLE applications ADD COLUMN rejection_reason TEXT")
+def _apply_migrations(connection: sqlite3.Connection) -> None:
+    _ensure_schema_version_table(connection)
+    applied_versions = _get_applied_migration_versions(connection)
+    for migration in _load_migrations():
+        if migration.version in applied_versions:
+            continue
+        if not _migration_is_satisfied(connection, migration.version):
+            connection.executescript(migration.path.read_text(encoding="utf-8"))
+        _record_migration(connection, migration)
+        applied_versions.add(migration.version)
+
+
+def _ensure_schema_version_table(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_version (
+            version INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            applied_at TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _get_applied_migration_versions(connection: sqlite3.Connection) -> set[int]:
+    rows = connection.execute("SELECT version FROM schema_version").fetchall()
+    return {int(row["version"]) for row in rows}
+
+
+def _load_migrations() -> list[Migration]:
+    migrations = [
+        Migration(
+            version=_parse_migration_version(path),
+            name=path.stem,
+            path=path,
+        )
+        for path in sorted(MIGRATIONS_DIR.glob("*.sql"))
+    ]
+    if not migrations:
+        raise RuntimeError(f"No database migrations found in {MIGRATIONS_DIR}.")
+    return migrations
+
+
+def _parse_migration_version(path: Path) -> int:
+    version_text = path.stem.split("_", 1)[0]
+    try:
+        return int(version_text)
+    except ValueError as error:
+        raise RuntimeError(f"Invalid migration filename: {path.name}") from error
+
+
+def _migration_is_satisfied(connection: sqlite3.Connection, version: int) -> bool:
+    if version == 1:
+        return _table_exists(connection, "applications") and _table_exists(connection, "application_events")
+    if version == 2:
+        return _column_exists(connection, "applications", "rejection_reason")
+    return False
+
+
+def _record_migration(connection: sqlite3.Connection, migration: Migration) -> None:
+    connection.execute(
+        """
+        INSERT INTO schema_version (version, name, applied_at)
+        VALUES (?, ?, ?)
+        """,
+        (migration.version, migration.name, _now()),
+    )
+
+
+def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+    row = connection.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'table'
+          AND name = ?
+        """,
+        (table_name,),
+    ).fetchone()
+    return row is not None
+
+
+def _column_exists(connection: sqlite3.Connection, table_name: str, column_name: str) -> bool:
+    rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return any(str(row["name"]) == column_name for row in rows)
 
 
 def _get_application_by_id(connection: sqlite3.Connection, application_id: int) -> dict[str, Any] | None:
