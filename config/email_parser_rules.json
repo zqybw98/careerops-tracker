@@ -1,0 +1,277 @@
+{
+  "match_thresholds": {
+    "auto_match": 6,
+    "suggested_match": 3,
+    "ambiguous_margin": 2
+  },
+  "generic_email_domains": [
+    "ashbyhq",
+    "bamboohr",
+    "gmail",
+    "googlemail",
+    "greenhouse",
+    "hotmail",
+    "icloud",
+    "lever",
+    "live",
+    "outlook",
+    "personio",
+    "smartrecruiters",
+    "successfactors",
+    "workday",
+    "yahoo"
+  ],
+  "role_stop_words": [
+    "and",
+    "application",
+    "for",
+    "from",
+    "intern",
+    "job",
+    "our",
+    "position",
+    "role",
+    "student",
+    "the",
+    "with",
+    "working",
+    "you",
+    "your"
+  ],
+  "common_locations": [
+    "Berlin",
+    "Munich",
+    "Muenchen",
+    "München",
+    "Hamburg",
+    "Stuttgart",
+    "Frankfurt",
+    "Cologne",
+    "Köln",
+    "Düsseldorf",
+    "Dresden",
+    "Leipzig",
+    "Potsdam",
+    "Walldorf",
+    "Bonn",
+    "Remote",
+    "Hybrid",
+    "Germany",
+    "Deutschland",
+    "柏林",
+    "慕尼黑",
+    "汉堡",
+    "德国",
+    "远程",
+    "混合办公",
+    "北京",
+    "上海"
+  ],
+  "month_lookup": {
+    "jan": 1,
+    "january": 1,
+    "januar": 1,
+    "feb": 2,
+    "february": 2,
+    "februar": 2,
+    "mar": 3,
+    "march": 3,
+    "märz": 3,
+    "maerz": 3,
+    "apr": 4,
+    "april": 4,
+    "may": 5,
+    "mai": 5,
+    "jun": 6,
+    "june": 6,
+    "juni": 6,
+    "jul": 7,
+    "july": 7,
+    "juli": 7,
+    "aug": 8,
+    "august": 8,
+    "sep": 9,
+    "sept": 9,
+    "september": 9,
+    "oct": 10,
+    "october": 10,
+    "okt": 10,
+    "oktober": 10,
+    "nov": 11,
+    "november": 11,
+    "dec": 12,
+    "december": 12,
+    "dez": 12,
+    "dezember": 12
+  },
+  "date_context_keywords": {
+    "deadline": [
+      "deadline",
+      "due",
+      "complete by",
+      "submit by",
+      "until",
+      "by",
+      "bis",
+      "spätestens",
+      "spaetestens",
+      "frist",
+      "截止",
+      "截止日期",
+      "请于"
+    ],
+    "interview": [
+      "interview",
+      "call",
+      "meeting",
+      "gespräch",
+      "gespraech",
+      "video interview",
+      "phone interview",
+      "technical interview",
+      "teams",
+      "zoom",
+      "面试",
+      "电话面试",
+      "视频面试"
+    ]
+  },
+  "extraction_patterns": {
+    "company": [
+      "(?:公司|企业|雇主)\\s*[:：]\\s*([^\\n\\r|,.;:<>，。；：]{1,80})",
+      "(?:firma|unternehmen|arbeitgeber)\\s*[:：]\\s*([^\\n\\r|,.;:<>]{1,80})",
+      "(?:company|employer|arbeitgeber|unternehmen)\\s*:\\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß0-9&.+\\- ]{1,60})",
+      "(?:applying|applied|application)\\s+(?:to|at)\\s+([A-Z][A-Za-z0-9&.+\\- ]{1,60})",
+      "(?:position|role|job)\\s+(?:at|with)\\s+([A-Z][A-Za-z0-9&.+\\- ]{1,60})",
+      "(?:interview|assessment|application).{0,80}\\s+at\\s+([A-Z][A-Za-z0-9&.+\\- ]{1,60})",
+      "(?:from|von|发件人)\\s*[:：]?.*?@([A-Za-z0-9.-]+\\.[A-Za-z]{2,})"
+    ],
+    "role": [
+      "(?:职位|岗位|申请职位|应聘岗位)\\s*[:：]\\s*(.{3,120})",
+      "(?:bewerbung|ihre bewerbung)\\s+(?:als|für|fuer|um)\\s+(.{3,120})",
+      "(?:stelle|position|rolle|job)\\s*[:：]\\s*(.{3,120})",
+      "(?:role|position|job title|stelle|positionstitel)\\s*:\\s*(.{3,120})",
+      "(?:application|applied)\\s+(?:for|as)\\s+(.{3,120})",
+      "(?:position|role|job)\\s+(?:of|as|for)\\s+(.{3,120})",
+      "betreff:\\s*(?:bewerbung|application)\\s+(.{3,120})",
+      "subject:\\s*(?:application|interview|update).{0,40}\\s+for\\s+(.{3,120})"
+    ],
+    "location": [
+      "(?:地点|城市|工作地点|办公地点)\\s*[:：]\\s*([^\\n\\r|,.;:<>，。；：]{2,60})",
+      "(?:standort|arbeitsort|ort|stadt)\\s*[:：]\\s*([^\\n\\r|,.;:<>]{2,60})",
+      "(?:location|standort|ort|city)\\s*:\\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß .\\-]{2,60})",
+      "(?:office|büro|buero)\\s+(?:in|at)\\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß .\\-]{2,60})"
+    ]
+  },
+  "intent_keywords": {
+    "rejection": [
+      "unfortunately",
+      "not proceed",
+      "not moving forward",
+      "decided not to continue",
+      "we regret",
+      "leider",
+      "absage"
+    ],
+    "interview": [
+      "interview",
+      "video interview",
+      "phone interview",
+      "technical interview",
+      "screening call"
+    ],
+    "assessment": [
+      "assessment",
+      "coding test",
+      "coding challenge",
+      "case study",
+      "testaufgabe"
+    ],
+    "confirmation": [
+      "thank you for your application",
+      "received your application",
+      "application has been received",
+      "we have received",
+      "bewerbung erhalten"
+    ]
+  },
+  "rejection_reason_rules": [
+    {
+      "reason": "Position closed or filled.",
+      "patterns": [
+        "position has been filled",
+        "position is filled",
+        "position closed",
+        "stelle wurde besetzt",
+        "stelle ist besetzt",
+        "职位已关闭",
+        "岗位已关闭",
+        "岗位已招满"
+      ]
+    },
+    {
+      "reason": "Other candidates were selected.",
+      "patterns": [
+        "other candidates",
+        "another candidate",
+        "more suitable candidates",
+        "more closely match",
+        "anderen bewerber",
+        "andere kandidaten",
+        "更合适的候选人",
+        "其他候选人"
+      ]
+    },
+    {
+      "reason": "Experience mismatch.",
+      "patterns": [
+        "lack of experience",
+        "not enough experience",
+        "experience does not match",
+        "does not meet our requirements",
+        "erfahrung entspricht nicht",
+        "经验不匹配",
+        "经验不足"
+      ]
+    },
+    {
+      "reason": "Language requirement mismatch.",
+      "patterns": [
+        "german language",
+        "language requirements",
+        "sprachkenntnisse",
+        "德语要求",
+        "语言要求"
+      ]
+    },
+    {
+      "reason": "Visa or work authorization mismatch.",
+      "patterns": [
+        "visa",
+        "work permit",
+        "work authorization",
+        "arbeitserlaubnis",
+        "签证",
+        "工作许可"
+      ]
+    }
+  ],
+  "rejection_sentence_keywords": [
+    "unfortunately",
+    "not proceed",
+    "not moving forward",
+    "decided not to continue",
+    "we regret",
+    "nicht berücksichtigen",
+    "nicht in die engere auswahl",
+    "bewerbung nicht weiter",
+    "leider",
+    "absage",
+    "很遗憾",
+    "遗憾",
+    "未能",
+    "不予考虑",
+    "无法继续",
+    "未通过"
+  ]
+}

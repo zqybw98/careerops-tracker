@@ -5,147 +5,19 @@ from datetime import date
 from typing import Any
 from urllib.parse import urlparse
 
+from src.config_loader import get_email_parser_config
 from src.models import CLOSED_STATUSES
 
-MATCH_THRESHOLD = 6
-SUGGESTED_MATCH_THRESHOLD = 3
-AMBIGUOUS_MATCH_MARGIN = 2
-
-GENERIC_EMAIL_DOMAINS = {
-    "gmail",
-    "googlemail",
-    "outlook",
-    "hotmail",
-    "live",
-    "yahoo",
-    "icloud",
-    "greenhouse",
-    "lever",
-    "workday",
-    "successfactors",
-    "smartrecruiters",
-    "ashbyhq",
-    "personio",
-    "bamboohr",
-}
-
-ROLE_STOP_WORDS = {
-    "and",
-    "the",
-    "for",
-    "with",
-    "from",
-    "your",
-    "our",
-    "you",
-    "application",
-    "position",
-    "role",
-    "job",
-    "working",
-    "student",
-    "intern",
-}
-
-COMMON_LOCATIONS = [
-    "Berlin",
-    "Munich",
-    "Muenchen",
-    "München",
-    "Hamburg",
-    "Stuttgart",
-    "Frankfurt",
-    "Cologne",
-    "Köln",
-    "Düsseldorf",
-    "Dresden",
-    "Leipzig",
-    "Potsdam",
-    "Walldorf",
-    "Bonn",
-    "Remote",
-    "Hybrid",
-    "Germany",
-    "Deutschland",
-    "柏林",
-    "慕尼黑",
-    "汉堡",
-    "德国",
-    "远程",
-    "混合办公",
-    "北京",
-    "上海",
-]
-
-MONTH_LOOKUP = {
-    "jan": 1,
-    "january": 1,
-    "januar": 1,
-    "feb": 2,
-    "february": 2,
-    "februar": 2,
-    "mar": 3,
-    "march": 3,
-    "märz": 3,
-    "maerz": 3,
-    "apr": 4,
-    "april": 4,
-    "may": 5,
-    "mai": 5,
-    "jun": 6,
-    "june": 6,
-    "juni": 6,
-    "jul": 7,
-    "july": 7,
-    "juli": 7,
-    "aug": 8,
-    "august": 8,
-    "sep": 9,
-    "sept": 9,
-    "september": 9,
-    "oct": 10,
-    "october": 10,
-    "okt": 10,
-    "oktober": 10,
-    "nov": 11,
-    "november": 11,
-    "dec": 12,
-    "december": 12,
-    "dez": 12,
-    "dezember": 12,
-}
-
-DEADLINE_KEYWORDS = (
-    "deadline",
-    "due",
-    "complete by",
-    "submit by",
-    "until",
-    "by",
-    "bis",
-    "spätestens",
-    "spaetestens",
-    "frist",
-    "截止",
-    "截止日期",
-    "请于",
-)
-
-INTERVIEW_DATE_KEYWORDS = (
-    "interview",
-    "call",
-    "meeting",
-    "gespräch",
-    "gespraech",
-    "video interview",
-    "phone interview",
-    "technical interview",
-    "teams",
-    "zoom",
-    "面试",
-    "电话面试",
-    "视频面试",
-)
+PARSER_CONFIG = get_email_parser_config()
+MATCH_THRESHOLD = PARSER_CONFIG["match_thresholds"]["auto_match"]
+SUGGESTED_MATCH_THRESHOLD = PARSER_CONFIG["match_thresholds"]["suggested_match"]
+AMBIGUOUS_MATCH_MARGIN = PARSER_CONFIG["match_thresholds"]["ambiguous_margin"]
+GENERIC_EMAIL_DOMAINS = set(PARSER_CONFIG["generic_email_domains"])
+ROLE_STOP_WORDS = set(PARSER_CONFIG["role_stop_words"])
+COMMON_LOCATIONS = PARSER_CONFIG["common_locations"]
+MONTH_LOOKUP = PARSER_CONFIG["month_lookup"]
+DEADLINE_KEYWORDS = tuple(PARSER_CONFIG["date_context_keywords"]["deadline"])
+INTERVIEW_DATE_KEYWORDS = tuple(PARSER_CONFIG["date_context_keywords"]["interview"])
 
 
 def extract_application_details(subject: str = "", body: str = "") -> dict[str, str]:
@@ -300,15 +172,7 @@ def _score_application_match(
 
 
 def _extract_company(text: str) -> str:
-    patterns = [
-        r"(?:公司|企业|雇主)\s*[:：]\s*([^\n\r|,.;:<>，。；：]{1,80})",
-        r"(?:firma|unternehmen|arbeitgeber)\s*[:：]\s*([^\n\r|,.;:<>]{1,80})",
-        r"(?:company|employer|arbeitgeber|unternehmen)\s*:\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß0-9&.+\- ]{1,60})",
-        r"(?:applying|applied|application)\s+(?:to|at)\s+([A-Z][A-Za-z0-9&.+\- ]{1,60})",
-        r"(?:position|role|job)\s+(?:at|with)\s+([A-Z][A-Za-z0-9&.+\- ]{1,60})",
-        r"(?:interview|assessment|application).{0,80}\s+at\s+([A-Z][A-Za-z0-9&.+\- ]{1,60})",
-        r"(?:from|von|发件人)\s*[:：]?.*?@([A-Za-z0-9.-]+\.[A-Za-z]{2,})",
-    ]
+    patterns = PARSER_CONFIG["extraction_patterns"]["company"]
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if not match:
@@ -389,58 +253,28 @@ def _score_status_context(
 
 
 def _infer_email_intent(normalized_email_text: str, details: dict[str, str]) -> str:
+    intent_keywords = PARSER_CONFIG["intent_keywords"]
     if details.get("rejection_reason") or any(
-        keyword in normalized_email_text
-        for keyword in [
-            "unfortunately",
-            "not proceed",
-            "not moving forward",
-            "decided not to continue",
-            "we regret",
-            "leider",
-            "absage",
-        ]
+        keyword in normalized_email_text for keyword in intent_keywords["rejection"]
     ):
         return "rejection"
 
     if details.get("interview_date") or any(
-        keyword in normalized_email_text
-        for keyword in ["interview", "video interview", "phone interview", "technical interview", "screening call"]
+        keyword in normalized_email_text for keyword in intent_keywords["interview"]
     ):
         return "interview"
 
-    if any(
-        keyword in normalized_email_text
-        for keyword in ["assessment", "coding test", "coding challenge", "case study", "testaufgabe"]
-    ):
+    if any(keyword in normalized_email_text for keyword in intent_keywords["assessment"]):
         return "assessment"
 
-    if any(
-        keyword in normalized_email_text
-        for keyword in [
-            "thank you for your application",
-            "received your application",
-            "application has been received",
-            "we have received",
-            "bewerbung erhalten",
-        ]
-    ):
+    if any(keyword in normalized_email_text for keyword in intent_keywords["confirmation"]):
         return "confirmation"
 
     return ""
 
 
 def _extract_role(text: str) -> str:
-    patterns = [
-        r"(?:职位|岗位|申请职位|应聘岗位)\s*[:：]\s*(.{3,120})",
-        r"(?:bewerbung|ihre bewerbung)\s+(?:als|für|fuer|um)\s+(.{3,120})",
-        r"(?:stelle|position|rolle|job)\s*[:：]\s*(.{3,120})",
-        r"(?:role|position|job title|stelle|positionstitel)\s*:\s*(.{3,120})",
-        r"(?:application|applied)\s+(?:for|as)\s+(.{3,120})",
-        r"(?:position|role|job)\s+(?:of|as|for)\s+(.{3,120})",
-        r"betreff:\s*(?:bewerbung|application)\s+(.{3,120})",
-        r"subject:\s*(?:application|interview|update).{0,40}\s+for\s+(.{3,120})",
-    ]
+    patterns = PARSER_CONFIG["extraction_patterns"]["role"]
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
@@ -460,12 +294,7 @@ def _extract_contact(text: str) -> str:
 
 
 def _extract_location(text: str) -> str:
-    patterns = [
-        r"(?:地点|城市|工作地点|办公地点)\s*[:：]\s*([^\n\r|,.;:<>，。；：]{2,60})",
-        r"(?:standort|arbeitsort|ort|stadt)\s*[:：]\s*([^\n\r|,.;:<>]{2,60})",
-        r"(?:location|standort|ort|city)\s*:\s*([A-ZÄÖÜ][A-Za-zÄÖÜäöüß .\-]{2,60})",
-        r"(?:office|büro|buero)\s+(?:in|at)\s+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß .\-]{2,60})",
-    ]
+    patterns = PARSER_CONFIG["extraction_patterns"]["location"]
     for pattern in patterns:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
@@ -561,76 +390,12 @@ def _keyword_position(text: str, keyword: str) -> int | None:
 
 def _extract_rejection_reason(text: str) -> str:
     normalized = _normalize_text(text)
-    reason_rules = [
-        (
-            "Position closed or filled.",
-            (
-                "position has been filled",
-                "position is filled",
-                "position closed",
-                "stelle wurde besetzt",
-                "stelle ist besetzt",
-                "职位已关闭",
-                "岗位已关闭",
-                "岗位已招满",
-            ),
-        ),
-        (
-            "Other candidates were selected.",
-            (
-                "other candidates",
-                "another candidate",
-                "more suitable candidates",
-                "more closely match",
-                "anderen bewerber",
-                "andere kandidaten",
-                "更合适的候选人",
-                "其他候选人",
-            ),
-        ),
-        (
-            "Experience mismatch.",
-            (
-                "lack of experience",
-                "not enough experience",
-                "experience does not match",
-                "does not meet our requirements",
-                "erfahrung entspricht nicht",
-                "经验不匹配",
-                "经验不足",
-            ),
-        ),
-        (
-            "Language requirement mismatch.",
-            ("german language", "language requirements", "sprachkenntnisse", "德语要求", "语言要求"),
-        ),
-        (
-            "Visa or work authorization mismatch.",
-            ("visa", "work permit", "work authorization", "arbeitserlaubnis", "签证", "工作许可"),
-        ),
-    ]
-    for reason, patterns in reason_rules:
-        if any(pattern in normalized for pattern in patterns):
-            return reason
+    reason_rules = PARSER_CONFIG["rejection_reason_rules"]
+    for rule in reason_rules:
+        if any(pattern in normalized for pattern in rule["patterns"]):
+            return rule["reason"]
 
-    rejection_keywords = (
-        "unfortunately",
-        "not proceed",
-        "not moving forward",
-        "decided not to continue",
-        "we regret",
-        "nicht berücksichtigen",
-        "nicht in die engere auswahl",
-        "bewerbung nicht weiter",
-        "leider",
-        "absage",
-        "很遗憾",
-        "遗憾",
-        "未能",
-        "不予考虑",
-        "无法继续",
-        "未通过",
-    )
+    rejection_keywords = PARSER_CONFIG["rejection_sentence_keywords"]
     for sentence in _split_sentences(text):
         if any(keyword in sentence.casefold() for keyword in rejection_keywords):
             return _trim_sentence(sentence)

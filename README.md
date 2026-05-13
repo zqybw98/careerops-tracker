@@ -28,6 +28,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails.
 - Keep an activity log for application creation, updates, imports, email-assistant actions, and cleanup.
 - Apply versioned SQLite migrations through a lightweight `schema_version` table.
+- Tune category keywords, parser patterns, matching thresholds, and reminder timing through JSON configuration files.
 - View a Streamlit dashboard with application metrics and status charts.
 - Edit key application fields directly from the dashboard recent-applications table.
 - Analyze response rate by source, monthly application volume, role-type conversion, waiting days, and stale pipeline risk.
@@ -78,6 +79,10 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |-- requirements-gmail.txt
 |-- pyproject.toml
 |-- .pre-commit-config.yaml
+|-- config/
+|   |-- email_classification_rules.json
+|   |-- email_parser_rules.json
+|   `-- reminder_rules.json
 |-- migrations/
 |   |-- 001_init.sql
 |   `-- 002_add_rejection_reason.sql
@@ -90,6 +95,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |-- src/
 |   |-- action_recommender.py
 |   |-- analytics.py
+|   |-- config_loader.py
 |   |-- database.py
 |   |-- csv_importer.py
 |   |-- dashboard.py
@@ -107,6 +113,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- test_action_recommender.py
 |   |-- test_analytics.py
 |   |-- test_application_service.py
+|   |-- test_config_loader.py
 |   |-- test_csv_importer.py
 |   |-- test_demo_data.py
 |   |-- test_email_classifier.py
@@ -217,6 +224,19 @@ The CSV importer supports the default English columns and common Chinese headers
 such as `公司名称`, `职位名称`, `申请日期`, `最新状态`, `拒绝原因`, and `备注/来源`.
 When the same company, role, and application date already exist, CSV import
 updates the existing record instead of adding a duplicate.
+
+## Configurable Rules
+
+Most rule-based behavior is stored in JSON under `config/` instead of being
+hard-coded in Python modules:
+
+- `email_classification_rules.json`: email categories, multilingual keywords, suggested statuses, next actions, follow-up intervals, and confidence settings.
+- `email_parser_rules.json`: extraction regex patterns, common locations, intent keywords, rejection reason patterns, generic email domains, and match thresholds.
+- `reminder_rules.json`: reminder priorities, messages, waiting-day thresholds, and default due-date behavior.
+
+This makes future tuning easier: a new German rejection phrase, a stricter match
+threshold, or a different follow-up interval can be changed in configuration and
+covered by tests without rewriting the classifier logic.
 
 ## Email Categories
 

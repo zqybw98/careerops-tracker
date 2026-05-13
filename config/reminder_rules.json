@@ -1,0 +1,52 @@
+{
+  "priority_order": {
+    "High": 0,
+    "Medium": 1,
+    "Low": 2
+  },
+  "rules": {
+    "follow_up_due": {
+      "priority": "High",
+      "message": "Follow-up date is due.",
+      "reason": "follow_up_date"
+    },
+    "interview_preparation": {
+      "priority": "High",
+      "message": "Prepare interview notes and confirm logistics.",
+      "reason": "interview_preparation"
+    },
+    "assessment_deadline": {
+      "priority": "High",
+      "message": "Work on assessment and check the deadline.",
+      "reason": "assessment_deadline",
+      "default_due_days": 2
+    },
+    "stale_application": {
+      "priority": "Medium",
+      "message": "Application has been open for 14+ days. Consider follow-up or mark as no response.",
+      "reason": "stale_application",
+      "minimum_days_open": 14,
+      "statuses": [
+        "Applied",
+        "Confirmation Received",
+        "No Response"
+      ]
+    },
+    "weekly_follow_up": {
+      "priority": "Medium",
+      "message": "No update after 7+ days. Consider a polite follow-up.",
+      "reason": "weekly_follow_up",
+      "minimum_days_open": 7,
+      "statuses": [
+        "Applied",
+        "Confirmation Received",
+        "No Response"
+      ]
+    },
+    "saved_role": {
+      "priority": "Low",
+      "message": "Saved role is not applied yet. Decide whether to apply.",
+      "reason": "saved_role"
+    }
+  }
+}

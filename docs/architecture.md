@@ -43,9 +43,11 @@ flowchart LR
 | Component | Responsibility |
 | --- | --- |
 | `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. Business workflows are delegated to services. |
+| `config/` | JSON rule configuration for email classification, email parsing, matching thresholds, and reminder behavior. |
 | `migrations/` | Ordered SQLite schema migrations applied at startup and tracked in `schema_version`. |
 | `src/action_recommender.py` | Converts classified emails and extracted context into workflow decisions, prioritized next actions, follow-up dates, rationales, and suggested template types. |
 | `src/analytics.py` | Builds decision-oriented metrics such as response rates, conversion, waiting days, monthly volume, and stale pipeline breakdowns. |
+| `src/config_loader.py` | Loads typed JSON configuration for rule-based modules with a small cached API. |
 | `src/database.py` | SQLite connection management, migration execution, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |
 | `src/csv_importer.py` | Normalizes English and Chinese CSV headers, dates, and statuses before import. |
 | `src/models.py` | Shared status options, application columns, and classification result shape. |
@@ -127,7 +129,7 @@ version without rerunning unsafe `ALTER TABLE` statements.
 | `name` | Migration filename stem, for example `002_add_rejection_reason`. |
 | `applied_at` | UTC timestamp when the migration was applied or baselined. |
 
-The database is local and ignored by Git (`data/*.db`), so sample data and tests
+The database is local and ignored by Git (`data/`), so sample data and tests
 can be shared without exposing personal job search records.
 
 ## Activity Logging
@@ -167,6 +169,24 @@ The classifier is rule-based rather than ML-based. This is deliberate for the
 MVP because recruiting email patterns are repetitive and explainability matters.
 It includes English, German, and Chinese recruiting phrases for the most common
 workflow categories.
+
+## Configurable Rule Layer
+
+Rules that are likely to change during job-search usage live in JSON files under
+`config/` rather than being hard-coded directly in the business logic:
+
+| Config file | Controls |
+| --- | --- |
+| `config/email_classification_rules.json` | Email categories, multilingual keywords, suggested statuses, suggested next actions, follow-up intervals, default fallback behavior, and confidence scoring parameters. |
+| `config/email_parser_rules.json` | Application matching thresholds, generic email domains, role stop words, common locations, date-context keywords, extraction regex patterns, email intent keywords, and rejection-reason patterns. |
+| `config/reminder_rules.json` | Reminder priorities, messages, reasons, waiting-day thresholds, status scopes, and default assessment due-date behavior. |
+
+`src/config_loader.py` exposes typed helper functions so the rest of the code can
+ask for classification, parser, or reminder configuration without depending on
+file paths or JSON parsing. This keeps the MVP deterministic and testable while
+making future tuning cheaper: adding a new German rejection phrase, changing a
+follow-up interval, or tightening the auto-match threshold no longer requires
+editing classifier or parser logic.
 
 Each rule contains:
 
