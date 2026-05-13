@@ -38,6 +38,23 @@ flowchart LR
 6. Suggested email outcomes can update an existing application.
 7. The reminder engine turns dates and statuses into pending actions.
 
+## Feature Coverage
+
+This section mirrors the README feature list and maps each user-facing feature
+area to the modules that implement it.
+
+| Feature area | User-facing capability | Main modules |
+| --- | --- | --- |
+| Application tracking | Track company, role, location, dates, source links, contacts, notes, rejection reasons, statuses, and next actions. | `app.py`, `src/database.py`, `src/models.py` |
+| Import/export | Import English or Chinese CSV files, re-import updated files without duplicates, export records, load demo data, and clean older duplicate rows. | `src/csv_importer.py`, `src/demo_data.py`, `src/database.py` |
+| Dashboard and editing | View pipeline metrics, status charts, pending actions, recent applications, decision analytics, and inline-edit key fields. | `src/dashboard.py`, `src/analytics.py`, `src/reminder_engine.py`, `app.py` |
+| Email Assistant | Classify recruiting emails, extract application context, rank top matches, apply confidence gates, recommend next actions, and generate operation summaries. | `src/services/email_workflow.py`, `src/email_classifier.py`, `src/email_parser.py`, `src/email_insights.py`, `src/action_recommender.py` |
+| Templates | Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement drafts. | `src/email_templates.py`, `app.py` |
+| Activity traceability | Record creates, updates, imports, email-assistant actions, dashboard edits, duplicate cleanup, and deletes. | `src/database.py` |
+| Configurable rules | Tune category keywords, parser patterns, matching thresholds, rejection reason patterns, and reminder timing without changing core logic. | `config/`, `src/config_loader.py` |
+| Optional Gmail sync | Read recent recruiting emails locally with OAuth, preview classifications, and apply only user-approved actions. | `src/gmail_client.py`, `src/services/email_workflow.py` |
+| Engineering quality | Run versioned SQLite migrations, linting, formatting, type checks, pytest, pre-commit hooks, and GitHub Actions. | `migrations/`, `pyproject.toml`, `.pre-commit-config.yaml`, `.github/workflows/tests.yml`, `tests/` |
+
 ## Components
 
 | Component | Responsibility |
@@ -60,7 +77,7 @@ flowchart LR
 | `src/reminder_engine.py` | Generates follow-up, interview, assessment, stale-application, and saved-role reminders. |
 | `src/services/email_workflow.py` | Orchestrates email classification, extracted context, application matching, workflow recommendations, note generation, and Gmail preview application. |
 | `src/demo_data.py` | Loads portfolio-friendly sample data from `samples/sample_applications.csv` without duplicates. |
-| `tests/` | Regression tests for persistence, email rules, reminder rules, and demo data loading. |
+| `tests/` | Regression tests for database persistence, config loading, CSV import, email rules, workflow services, analytics, reminders, Gmail preview behavior, and demo data loading. |
 | `pyproject.toml` | Central configuration for Ruff linting, Ruff formatting, and mypy type checking. |
 | `.pre-commit-config.yaml` | Local hooks for lint auto-fix, formatting, and type checks before commits. |
 | `.streamlit/config.toml` | Streamlit theme configuration used locally and in the hosted demo. |

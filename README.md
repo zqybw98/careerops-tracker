@@ -93,6 +93,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |       |-- tests.yml
 |       `-- release.yml
 |-- src/
+|   |-- __init__.py
 |   |-- action_recommender.py
 |   |-- analytics.py
 |   |-- config_loader.py
@@ -108,13 +109,14 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- models.py
 |   |-- reminder_engine.py
 |   `-- services/
+|       |-- __init__.py
 |       `-- email_workflow.py
 |-- tests/
 |   |-- test_action_recommender.py
 |   |-- test_analytics.py
-|   |-- test_application_service.py
 |   |-- test_config_loader.py
 |   |-- test_csv_importer.py
+|   |-- test_database.py
 |   |-- test_demo_data.py
 |   |-- test_email_classifier.py
 |   |-- test_email_insights.py
@@ -128,7 +130,12 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   `-- sample_emails.txt
 `-- docs/
     |-- architecture.md
-    `-- deployment.md
+    |-- deployment.md
+    `-- screenshots/
+        |-- applications.png
+        |-- dashboard.png
+        |-- email-assistant.png
+        `-- recent-applications.png
 ```
 
 ## Getting Started
