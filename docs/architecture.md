@@ -18,12 +18,14 @@ rules for automation, and pytest for regression coverage.
 ```mermaid
 flowchart LR
     User["User"] --> UI["Streamlit UI"]
-    UI --> DB["SQLite database"]
-    UI --> Classifier["Email classifier"]
-    UI --> Reminders["Reminder engine"]
+    UI --> Services["Workflow services"]
+    Services --> DB["SQLite database"]
+    Services --> Classifier["Email classifier"]
+    Services --> Reminders["Reminder engine"]
     DB --> Dashboard["Dashboard summary"]
-    Classifier --> UI
-    Reminders --> UI
+    Classifier --> Services
+    Reminders --> Services
+    Services --> UI
     Dashboard --> UI
 ```
 
@@ -40,7 +42,7 @@ flowchart LR
 
 | Component | Responsibility |
 | --- | --- |
-| `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. |
+| `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. Business workflows are delegated to services. |
 | `src/action_recommender.py` | Converts classified emails and extracted context into workflow decisions, prioritized next actions, follow-up dates, rationales, and suggested template types. |
 | `src/analytics.py` | Builds decision-oriented metrics such as response rates, conversion, waiting days, monthly volume, and stale pipeline breakdowns. |
 | `src/database.py` | SQLite connection management, schema creation, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |
@@ -53,6 +55,7 @@ flowchart LR
 | `src/email_templates.py` | Generates rule-based follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails. |
 | `src/gmail_client.py` | Optional local Gmail API client that fetches read-only recruiting emails for preview classification. |
 | `src/reminder_engine.py` | Generates follow-up, interview, assessment, stale-application, and saved-role reminders. |
+| `src/services/email_workflow.py` | Orchestrates email classification, extracted context, application matching, workflow recommendations, note generation, and Gmail preview application. |
 | `src/demo_data.py` | Loads portfolio-friendly sample data from `samples/sample_applications.csv` without duplicates. |
 | `tests/` | Regression tests for persistence, email rules, reminder rules, and demo data loading. |
 | `pyproject.toml` | Central configuration for Ruff linting, Ruff formatting, and mypy type checking. |
@@ -60,6 +63,19 @@ flowchart LR
 | `.streamlit/config.toml` | Streamlit theme configuration used locally and in the hosted demo. |
 | `.github/workflows/tests.yml` | Runs lint, format, type checks, and pytest on push and pull requests. |
 | `docs/deployment.md` | Deployment checklist for publishing the app on Streamlit Community Cloud. |
+
+## Layering Direction
+
+The codebase is moving toward a small three-layer structure:
+
+- `app.py` and future `ui/` modules own display, forms, widgets, and session state.
+- `src/services/` owns workflow orchestration that combines classifiers, parsers,
+  recommendations, database writes, and note generation.
+- Boundary modules such as `src/database.py`, `src/gmail_client.py`, and
+  `src/csv_importer.py` act as adapters around persistence and external inputs.
+
+This keeps user-interface changes separate from business workflow decisions, which
+is useful as the assistant grows beyond pasted email classification.
 
 ## Data Model
 

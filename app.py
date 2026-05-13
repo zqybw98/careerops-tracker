@@ -5,7 +5,6 @@ from datetime import date, timedelta
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from src.action_recommender import build_next_action_recommendation, build_workflow_decision
 from src.analytics import (
     build_applications_per_month,
     build_average_waiting_days_by_company,
@@ -28,7 +27,6 @@ from src.database import (
     update_application,
 )
 from src.demo_data import seed_sample_applications
-from src.email_classifier import classify_email
 from src.email_insights import (
     build_confidence_threshold_rows,
     build_context_rows,
@@ -37,14 +35,8 @@ from src.email_insights import (
     build_match_candidate_rows,
     build_match_reason_rows,
     build_match_signal_rows,
-    build_operation_summary,
     build_workflow_steps,
     confidence_gate,
-)
-from src.email_parser import (
-    extract_application_details,
-    match_application_from_email,
-    rank_application_matches_from_email,
 )
 from src.email_templates import TEMPLATE_TYPES, generate_email_template, suggest_template_type
 from src.gmail_client import (
@@ -55,6 +47,15 @@ from src.gmail_client import (
 )
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
 from src.reminder_engine import generate_reminders
+from src.services.email_workflow import (
+    apply_email_workflow_update,
+    apply_gmail_preview,
+    build_email_create_recommendation,
+    build_email_workflow_for_application,
+    build_gmail_sync_preview,
+    build_initial_email_create_notes,
+    classify_email_for_workflow,
+)
 
 DASHBOARD_EDITOR_COLUMNS = [
     "#",
@@ -566,24 +567,11 @@ def render_email_assistant(applications: list[dict]) -> None:
 
     if st.button("Classify email"):
         st.session_state.pop("email_create_success_message", None)
-        result = classify_email(subject=subject, body=body)
-        details = extract_application_details(subject=subject, body=body)
-        match_candidates = rank_application_matches_from_email(
-            applications,
-            subject=subject,
-            body=body,
-            extracted_details=details,
-        )
-        match = match_application_from_email(
-            applications,
-            subject=subject,
-            body=body,
-            extracted_details=details,
-        )
-        st.session_state["last_classification"] = result
-        st.session_state["last_email_details"] = details
-        st.session_state["last_application_match"] = match
-        st.session_state["last_application_matches"] = match_candidates
+        workflow = classify_email_for_workflow(subject=subject, body=body, applications=applications)
+        st.session_state["last_classification"] = workflow["classification"]
+        st.session_state["last_email_details"] = workflow["details"]
+        st.session_state["last_application_match"] = workflow["match"]
+        st.session_state["last_application_matches"] = workflow["match_candidates"]
 
     result = st.session_state.get("last_classification")
     if not result:
@@ -593,7 +581,7 @@ def render_email_assistant(applications: list[dict]) -> None:
     details = st.session_state.get("last_email_details", {})
     match = st.session_state.get("last_application_match")
     match_candidates = st.session_state.get("last_application_matches", [])
-    create_recommendation = build_next_action_recommendation(result, details)
+    create_recommendation = build_email_create_recommendation(result, details)
 
     render_email_analysis_report(
         result,
@@ -621,24 +609,16 @@ def render_email_assistant(applications: list[dict]) -> None:
             st.caption("Default selection uses the highest-ranked candidate. Review it before applying changes.")
         selected_id = label_id_map[selected_label]
         selected = next(item for item in applications if item["id"] == selected_id)
-        recommendation = build_next_action_recommendation(result, details, selected)
-        workflow_decision = build_workflow_decision(
+        workflow_context = build_email_workflow_for_application(
             result,
             details,
-            recommendation,
-            application=selected,
-            auto_match=match,
-            match_candidates=match_candidates,
+            selected,
+            match,
+            match_candidates,
         )
-        operation_summary = build_operation_summary(
-            result,
-            details,
-            recommendation,
-            workflow_decision,
-            selected_application=selected,
-            selected_match=match,
-            match_candidates=match_candidates,
-        )
+        recommendation = workflow_context["recommendation"]
+        workflow_decision = workflow_context["workflow_decision"]
+        operation_summary = workflow_context["operation_summary"]
 
         decision_cols = st.columns(5)
         decision_cols[0].metric("Decision", workflow_decision["operation"])
@@ -671,7 +651,7 @@ def render_email_assistant(applications: list[dict]) -> None:
 
         next_action_col, status_col = st.columns(2)
         if next_action_col.button(workflow_decision["secondary_action_label"], type="primary"):
-            _update_application_from_email_action(
+            apply_email_workflow_update(
                 selected_id,
                 selected,
                 result,
@@ -687,7 +667,7 @@ def render_email_assistant(applications: list[dict]) -> None:
             workflow_decision["primary_action_label"],
             disabled=not workflow_decision["status_update_allowed"],
         ):
-            _update_application_from_email_action(
+            apply_email_workflow_update(
                 selected_id,
                 selected,
                 result,
@@ -728,7 +708,7 @@ def render_email_assistant(applications: list[dict]) -> None:
         )
         notes = st.text_area(
             "Notes",
-            value=_append_note(_build_email_note(result, details), _build_next_action_note(create_recommendation)),
+            value=build_initial_email_create_notes(result, details, create_recommendation),
             key="email_create_notes",
         )
         rejection_reason = st.text_area(
@@ -997,7 +977,7 @@ def render_gmail_sync_tools(applications: list[dict]) -> None:
                 query=query,
                 max_results=int(max_results),
             )
-            st.session_state["gmail_sync_preview"] = _build_gmail_sync_preview(emails, applications)
+            st.session_state["gmail_sync_preview"] = build_gmail_sync_preview(emails, applications)
         except (GmailDependencyError, GmailConfigurationError) as error:
             st.error(str(error))
             st.info("Install optional dependencies with `pip install -r requirements-gmail.txt`.")
@@ -1086,122 +1066,6 @@ def _matched_label_index(
     return 0
 
 
-def _update_application_from_email_action(
-    selected_id: int,
-    selected: dict,
-    result: dict,
-    details: dict[str, str],
-    recommendation: dict[str, str],
-    apply_status: bool,
-    operation_summary: dict[str, str] | None = None,
-) -> None:
-    follow_up_date = recommendation["follow_up_date"] or selected.get("follow_up_date", "")
-    notes = _append_note(selected.get("notes", ""), _build_email_note(result, details))
-    notes = _append_note(notes, _build_next_action_note(recommendation))
-    if operation_summary:
-        notes = _append_note(notes, operation_summary["audit_note"])
-
-    rejection_reason = selected.get("rejection_reason", "")
-    if result["suggested_status"] == "Rejected" and not rejection_reason:
-        rejection_reason = details.get("rejection_reason") or "Rejected based on classified recruiting email."
-
-    update_application(
-        selected_id,
-        {
-            **selected,
-            "status": result["suggested_status"] if apply_status else selected.get("status", "Applied"),
-            "location": selected.get("location", "") or details.get("location", ""),
-            "contact": selected.get("contact", "") or details.get("contact", ""),
-            "source_link": selected.get("source_link", "") or details.get("source_link", ""),
-            "next_action": recommendation["next_action"],
-            "follow_up_date": follow_up_date,
-            "notes": notes,
-            "rejection_reason": rejection_reason,
-        },
-        source="email_assistant" if apply_status else "email_next_action",
-    )
-
-
-def _build_next_action_note(recommendation: dict[str, str]) -> str:
-    note_parts = [
-        f"Smart next action generated: {recommendation['next_action']}",
-        f"Priority: {recommendation['priority']}",
-    ]
-    if recommendation["follow_up_date"]:
-        note_parts.append(f"Follow-up date: {recommendation['follow_up_date']}")
-    if recommendation["template_type"]:
-        note_parts.append(f"Suggested template: {recommendation['template_type']}")
-    if recommendation["rationale"]:
-        note_parts.append(f"Rationale: {recommendation['rationale']}")
-    return " | ".join(note_parts)
-
-
-def _build_email_note(result: dict, details: dict[str, str]) -> str:
-    note_parts = [f"Email classified as {result['category']} with {result['confidence']:.0%} confidence."]
-    extracted_parts = [
-        f"{label}: {details[value]}"
-        for label, value in [
-            ("Company", "company"),
-            ("Role", "role"),
-            ("Location", "location"),
-            ("Contact", "contact"),
-            ("Source", "source_link"),
-            ("Interview date", "interview_date"),
-            ("Deadline", "deadline"),
-            ("Suggested follow-up", "suggested_follow_up_date"),
-            ("Rejection reason", "rejection_reason"),
-        ]
-        if details.get(value)
-    ]
-    if extracted_parts:
-        note_parts.append("Extracted " + "; ".join(extracted_parts))
-    return " ".join(note_parts)
-
-
-def _build_gmail_sync_preview(emails: list[dict[str, str]], applications: list[dict]) -> list[dict]:
-    previews: list[dict] = []
-    for index, email in enumerate(emails, start=1):
-        subject = email.get("subject", "")
-        body = email.get("body", "")
-        result = classify_email(subject=subject, body=body)
-        details = extract_application_details(subject=subject, body=body)
-        match = match_application_from_email(
-            applications,
-            subject=subject,
-            body=body,
-            extracted_details=details,
-        )
-        previews.append(
-            {
-                "index": index,
-                "apply": False,
-                "gmail_id": email.get("gmail_id", ""),
-                "subject": subject,
-                "sender": email.get("sender", ""),
-                "date": email.get("date", ""),
-                "body": body,
-                "category": result["category"],
-                "confidence": result["confidence"],
-                "suggested_status": result["suggested_status"],
-                "suggested_next_action": result["suggested_next_action"],
-                "suggested_follow_up_days": result["suggested_follow_up_days"],
-                "matched_keywords": result["matched_keywords"],
-                "company": details.get("company", ""),
-                "role": details.get("role", ""),
-                "location": details.get("location", ""),
-                "contact": details.get("contact", ""),
-                "source_link": details.get("source_link", ""),
-                "suggested_follow_up_date": details.get("suggested_follow_up_date", ""),
-                "rejection_reason": details.get("rejection_reason", ""),
-                "matched_application_id": int(match["application_id"]) if match else 0,
-                "matched_application": f"{match['company']} / {match['role']}" if match else "",
-                "details": details,
-                "classification": result,
-            }
-        )
-    return previews
-
-
 def _gmail_preview_display_df(previews: list[dict]) -> pd.DataFrame:
     rows = []
     for preview in previews:
@@ -1234,80 +1098,9 @@ def _apply_selected_gmail_suggestions(
 
     for index in selected_indexes:
         preview = preview_by_index[index]
-        action = _apply_gmail_preview(preview, applications)
+        action = apply_gmail_preview(preview, applications)
         result[action] += 1
     return result
-
-
-def _apply_gmail_preview(preview: dict, applications: list[dict]) -> str:
-    if preview["matched_application_id"]:
-        selected = next(item for item in applications if int(item["id"]) == int(preview["matched_application_id"]))
-        recommendation = build_next_action_recommendation(preview["classification"], preview["details"], selected)
-        follow_up_date = recommendation["follow_up_date"] or selected.get("follow_up_date", "")
-
-        rejection_reason = selected.get("rejection_reason", "")
-        if preview["suggested_status"] == "Rejected" and not rejection_reason:
-            rejection_reason = preview.get("rejection_reason") or "Rejected based on Gmail recruiting email."
-
-        update_application(
-            int(selected["id"]),
-            {
-                **selected,
-                "status": preview["suggested_status"],
-                "location": selected.get("location", "") or preview.get("location", ""),
-                "contact": selected.get("contact", "") or preview.get("contact", ""),
-                "source_link": selected.get("source_link", "") or preview.get("source_link", ""),
-                "next_action": recommendation["next_action"],
-                "follow_up_date": follow_up_date,
-                "notes": _append_note(
-                    _append_note(selected.get("notes", ""), _build_gmail_note(preview)),
-                    _build_next_action_note(recommendation),
-                ),
-                "rejection_reason": rejection_reason,
-            },
-            source="gmail_sync",
-        )
-        return "updated"
-
-    if not preview.get("company") or not preview.get("role"):
-        return "skipped"
-
-    recommendation = build_next_action_recommendation(preview["classification"], preview["details"])
-    create_application(
-        {
-            "company": preview["company"],
-            "role": preview["role"],
-            "location": preview.get("location", ""),
-            "application_date": date.today().isoformat(),
-            "status": preview["suggested_status"],
-            "source_link": preview.get("source_link", ""),
-            "contact": preview.get("contact", ""),
-            "notes": _append_note(_build_gmail_note(preview), _build_next_action_note(recommendation)),
-            "rejection_reason": (preview.get("rejection_reason") or "Rejected based on Gmail recruiting email.")
-            if preview["suggested_status"] == "Rejected"
-            else "",
-            "next_action": recommendation["next_action"],
-            "follow_up_date": recommendation["follow_up_date"],
-        },
-        source="gmail_sync",
-    )
-    return "created"
-
-
-def _build_gmail_note(preview: dict) -> str:
-    note = _build_email_note(preview["classification"], preview["details"])
-    subject = str(preview.get("subject", "")).strip()
-    sender = str(preview.get("sender", "")).strip()
-    metadata = " | ".join(value for value in [f"Gmail subject: {subject}" if subject else "", sender] if value)
-    return _append_note(note, metadata) if metadata else note
-
-
-def _append_note(existing_notes: str, new_note: str) -> str:
-    if not existing_notes:
-        return new_note
-    if new_note in existing_notes:
-        return existing_notes
-    return f"{existing_notes}\n{new_note}"
 
 
 def _recipient_name_from_contact(contact: object) -> str:

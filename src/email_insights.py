@@ -94,8 +94,8 @@ def build_operation_summary(
     summary = (
         f"{operation} for {target}. Email classified as {category} "
         f"({confidence:.0%}, {gate['gate']}) with suggested status {suggested_status}. "
-        f"{match_summary} Recommended record action: {record_action}. "
-        f"Recommended next action: {next_action} Status action: {status_action}."
+        f"{match_summary} Recommended record action: {_as_sentence(record_action)} "
+        f"Recommended next action: {_as_sentence(next_action)} Status action: {status_action}."
         f"{follow_up_sentence}"
     )
     audit_note = (
@@ -349,6 +349,15 @@ def _operation_match_summary(
         return f"{candidate_count} possible existing match(es) were found and need confirmation."
 
     return "No confident existing application match was found."
+
+
+def _as_sentence(value: str) -> str:
+    text = value.strip()
+    if not text:
+        return ""
+    if text.endswith((".", "!", "?")):
+        return text
+    return f"{text}."
 
 
 def _workflow_step_two(workflow_decision: dict[str, Any] | None, has_match: bool) -> str:

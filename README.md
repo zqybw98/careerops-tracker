@@ -91,11 +91,14 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- dashboard.py
 |   |-- demo_data.py
 |   |-- email_classifier.py
+|   |-- email_insights.py
 |   |-- email_parser.py
 |   |-- email_templates.py
 |   |-- gmail_client.py
 |   |-- models.py
-|   `-- reminder_engine.py
+|   |-- reminder_engine.py
+|   `-- services/
+|       `-- email_workflow.py
 |-- tests/
 |   |-- test_action_recommender.py
 |   |-- test_analytics.py
@@ -103,8 +106,10 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- test_csv_importer.py
 |   |-- test_demo_data.py
 |   |-- test_email_classifier.py
+|   |-- test_email_insights.py
 |   |-- test_email_parser.py
 |   |-- test_email_templates.py
+|   |-- test_email_workflow_service.py
 |   |-- test_gmail_client.py
 |   `-- test_reminder_engine.py
 |-- samples/
