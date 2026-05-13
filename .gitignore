@@ -11,6 +11,5 @@ credentials.json
 token.json
 gmail_credentials.json
 gmail_token.json
-data/*.db
-data/*.db-journal
+data/
 .streamlit/secrets.toml
