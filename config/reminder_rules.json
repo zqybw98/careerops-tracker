@@ -28,8 +28,7 @@
       "minimum_days_open": 14,
       "statuses": [
         "Applied",
-        "Confirmation Received",
-        "No Response"
+        "Confirmation Received"
       ]
     },
     "weekly_follow_up": {
@@ -39,8 +38,7 @@
       "minimum_days_open": 7,
       "statuses": [
         "Applied",
-        "Confirmation Received",
-        "No Response"
+        "Confirmation Received"
       ]
     },
     "saved_role": {

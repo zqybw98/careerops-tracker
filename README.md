@@ -32,6 +32,8 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Tune category keywords, parser patterns, matching thresholds, and reminder timing through JSON configuration files.
 - View a Streamlit dashboard with application metrics and status charts.
 - Edit key application fields directly from the dashboard recent-applications table.
+- Search and filter applications by company or role, source/contact text, date range, status, and stale-only views.
+- Use bulk application actions to archive records, mark no response, or set follow-up dates from the Applications page.
 - Analyze response rate by source, monthly application volume, role-type conversion, waiting days, and stale pipeline risk.
 - Navigate through a simplified sidebar workspace layout: Overview, Applications, Email Assistant, and Data & Settings.
 - Load demo applications to preview the dashboard immediately after setup.
@@ -99,6 +101,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- __init__.py
 |   |-- action_recommender.py
 |   |-- analytics.py
+|   |-- application_filters.py
 |   |-- config_loader.py
 |   |-- database.py
 |   |-- csv_importer.py
@@ -118,6 +121,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |-- tests/
 |   |-- test_action_recommender.py
 |   |-- test_analytics.py
+|   |-- test_application_filters.py
 |   |-- test_config_loader.py
 |   |-- test_csv_importer.py
 |   |-- test_database.py

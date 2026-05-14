@@ -15,11 +15,13 @@ matching section, GitHub generates release notes automatically.
 - Activity log support for application changes and assistant-driven updates.
 - Decision analytics, inline dashboard editing, and richer Email Assistant recommendations.
 - Manual correction feedback for email category, suggested status, and matched application preferences.
+- Applications-page search, date-range filtering, stale-only filtering, and bulk maintenance actions.
 
 ### Changed
 
 - Project documentation now maps feature areas to implementation modules.
 - Database-focused tests were renamed for clearer ownership.
+- No Response applications no longer create stale follow-up reminders unless a follow-up date is explicitly set.
 
 ## [v0.1.0] - 2026-05-07
 

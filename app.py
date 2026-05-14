@@ -14,6 +14,7 @@ from src.analytics import (
     build_saved_vs_applied_summary,
     build_stale_pipeline_breakdown,
 )
+from src.application_filters import build_bulk_update_payload, filter_applications
 from src.csv_importer import normalize_import_rows
 from src.dashboard import build_summary
 from src.database import (
@@ -461,28 +462,114 @@ def render_applications(applications: list[dict]) -> None:
         st.rerun()
     helper_col.caption("Removes repeated rows with the same company, role, and application date.")
 
-    df = _with_display_sequence(pd.DataFrame(applications))
-    selected_statuses = st.multiselect("Filter by status", STATUS_OPTIONS, default=STATUS_OPTIONS)
-    filtered = df[df["status"].isin(selected_statuses)]
-    st.dataframe(
-        filtered[
-            [
-                "#",
-                "company",
-                "role",
-                "location",
-                "application_date",
-                "status",
-                "next_action",
-                "follow_up_date",
-                "updated_at",
-            ]
-        ],
+    stored_message = st.session_state.pop("application_bulk_success_message", None)
+    if stored_message:
+        st.success(stored_message)
+
+    selected_statuses = st.multiselect(
+        "Filter by status",
+        STATUS_OPTIONS,
+        default=STATUS_OPTIONS,
+        key="application_status_filter",
+    )
+    filter_col_a, filter_col_b, filter_col_c, filter_col_d = st.columns([1.3, 1.3, 1.5, 0.8])
+    company_query = filter_col_a.text_input("Search company or role", key="application_company_search")
+    source_query = filter_col_b.text_input("Search source/contact/notes", key="application_source_search")
+    date_range = filter_col_c.date_input("Application date range", value=(), key="application_date_range")
+    start_date, end_date = _date_range_bounds(date_range)
+    stale_only = filter_col_d.checkbox("Stale only", key="application_stale_only")
+
+    filtered_applications = filter_applications(
+        applications,
+        statuses=selected_statuses,
+        company_query=company_query,
+        source_query=source_query,
+        start_date=start_date,
+        end_date=end_date,
+        stale_only=stale_only,
+    )
+    st.caption(f"Showing {len(filtered_applications)} of {len(applications)} application(s).")
+
+    if not filtered_applications:
+        st.info("No applications match the current filters.")
+        return
+
+    filtered_df = _with_display_sequence(pd.DataFrame(filtered_applications))
+    visible_columns = [
+        "#",
+        "company",
+        "role",
+        "location",
+        "application_date",
+        "status",
+        "next_action",
+        "follow_up_date",
+        "updated_at",
+    ]
+    bulk_df = filtered_df[visible_columns].copy()
+    bulk_df.insert(0, "select", False)
+    edited_bulk_df = st.data_editor(
+        bulk_df,
         use_container_width=True,
         hide_index=True,
+        height=360,
+        disabled=[column for column in bulk_df.columns if column != "select"],
+        column_config={
+            "select": st.column_config.CheckboxColumn("Select", width="small"),
+            "#": st.column_config.NumberColumn("#", width="small"),
+            "company": st.column_config.TextColumn("company", width="medium"),
+            "role": st.column_config.TextColumn("role", width="large"),
+            "location": st.column_config.TextColumn("location", width="medium"),
+            "application_date": st.column_config.TextColumn("application_date", width="medium"),
+            "status": st.column_config.TextColumn("status", width="medium"),
+            "next_action": st.column_config.TextColumn("next_action", width="large"),
+            "follow_up_date": st.column_config.TextColumn("follow_up_date", width="medium"),
+            "updated_at": st.column_config.TextColumn("updated_at", width="medium"),
+        },
+        key="applications_bulk_editor",
+    )
+    selected_ids = _selected_application_ids_from_editor(filtered_df, edited_bulk_df)
+
+    bulk_col_a, bulk_col_b, bulk_col_c, bulk_col_d = st.columns([1, 1.1, 1.2, 3])
+    follow_up_target = bulk_col_c.date_input(
+        "Bulk follow-up date",
+        value=date.today() + timedelta(days=7),
+        key="bulk_follow_up_target",
+    )
+    if bulk_col_a.button(
+        "Archive selected",
+        disabled=not selected_ids,
+        key="bulk_archive_applications",
+    ):
+        changed = _apply_bulk_application_action(selected_ids, applications, "archive")
+        st.session_state["application_bulk_success_message"] = f"Archived {changed} application(s)."
+        st.rerun()
+    if bulk_col_b.button(
+        "Mark no response",
+        disabled=not selected_ids,
+        key="bulk_no_response_applications",
+    ):
+        changed = _apply_bulk_application_action(selected_ids, applications, "mark_no_response")
+        st.session_state["application_bulk_success_message"] = f"Marked {changed} application(s) as no response."
+        st.rerun()
+    if bulk_col_d.button(
+        "Set follow-up for selected",
+        disabled=not selected_ids,
+        key="bulk_follow_up_applications",
+    ):
+        changed = _apply_bulk_application_action(
+            selected_ids,
+            applications,
+            "set_follow_up",
+            follow_up_date=follow_up_target,
+        )
+        st.session_state["application_bulk_success_message"] = f"Set follow-up for {changed} application(s)."
+        st.rerun()
+    bulk_col_d.caption(
+        "Select rows in the table, then apply one bulk action. Archive uses No Response and clears active follow-ups."
     )
 
-    label_id_map = _application_label_id_map(applications)
+    label_id_map = _application_label_id_map(filtered_applications)
     selected_label = st.selectbox("Select application to edit", list(label_id_map.keys()))
     selected_id = label_id_map[selected_label]
     selected = next(item for item in applications if item["id"] == selected_id)
@@ -1152,6 +1239,51 @@ def _application_label_id_map(applications: list[dict]) -> dict[str, int]:
         label = f"{row['#']} - {row['company']} - {row['role']}"
         labels[label] = int(row["id"])
     return labels
+
+
+def _date_range_bounds(value: object) -> tuple[date | None, date | None]:
+    if isinstance(value, tuple | list):
+        dates = [item for item in value if isinstance(item, date)]
+        if len(dates) >= 2:
+            return dates[0], dates[1]
+        if len(dates) == 1:
+            return dates[0], None
+    if isinstance(value, date):
+        return value, value
+    return None, None
+
+
+def _selected_application_ids_from_editor(display_df: pd.DataFrame, edited_df: pd.DataFrame) -> list[int]:
+    rows_by_sequence = {int(row["#"]): row for row in display_df.to_dict(orient="records")}
+    selected_ids: list[int] = []
+    for row in edited_df.to_dict(orient="records"):
+        if not bool(row.get("select")):
+            continue
+        sequence_number = int(row["#"])
+        selected_ids.append(int(rows_by_sequence[sequence_number]["id"]))
+    return selected_ids
+
+
+def _apply_bulk_application_action(
+    selected_ids: list[int],
+    applications: list[dict],
+    action: str,
+    *,
+    follow_up_date: date | None = None,
+) -> int:
+    applications_by_id = {int(application["id"]): application for application in applications}
+    changed = 0
+    for application_id in selected_ids:
+        application = applications_by_id.get(application_id)
+        if not application:
+            continue
+        update_application(
+            application_id,
+            build_bulk_update_payload(application, action, follow_up_date=follow_up_date),
+            source=f"bulk_{action}",
+        )
+        changed += 1
+    return changed
 
 
 def _matched_label_index(
