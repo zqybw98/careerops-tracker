@@ -23,6 +23,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Gate status updates with confidence thresholds: high confidence can be applied, medium confidence requires review, and low confidence is blocked.
 - Generate one-click next actions with priority, follow-up date, rationale, and suggested email template type.
 - Rank the top existing application matches for recruiting emails with scores, confidence, and match reasons.
+- Save manual correction feedback for email category, suggested status, and matched application; reuse it for similar future emails.
 - Optionally sync recent recruiting emails from Gmail with local read-only OAuth.
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
 - Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails.
@@ -86,7 +87,8 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   `-- reminder_rules.json
 |-- migrations/
 |   |-- 001_init.sql
-|   `-- 002_add_rejection_reason.sql
+|   |-- 002_add_rejection_reason.sql
+|   `-- 003_add_email_feedback.sql
 |-- .streamlit/
 |   `-- config.toml
 |-- .github/
@@ -103,6 +105,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- dashboard.py
 |   |-- demo_data.py
 |   |-- email_classifier.py
+|   |-- email_feedback.py
 |   |-- email_insights.py
 |   |-- email_parser.py
 |   |-- email_templates.py
@@ -222,9 +225,10 @@ before applying any suggested application updates. `credentials.json` and
 1. Add a job application.
 2. Paste a recruiting email into the Email Assistant.
 3. Review the detected category, confidence score, extracted application context, suggested status, and smart next action.
-4. Apply the next action or suggested status to a matched application, or create a new application from the email.
-5. Generate a follow-up, thank-you, outreach, or acknowledgement email from the Templates tab.
-6. Use the dashboard to monitor waiting applications, follow-up tasks, response rates, role conversion, and stale records.
+4. Save correction feedback if the assistant chose the wrong category, status, or matched application.
+5. Apply the next action or suggested status to a matched application, or create a new application from the email.
+6. Generate a follow-up, thank-you, outreach, or acknowledgement email from the Templates tab.
+7. Use the dashboard to monitor waiting applications, follow-up tasks, response rates, role conversion, and stale records.
 
 For a quick demo, open the Data tab and click `Load sample applications`.
 

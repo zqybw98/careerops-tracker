@@ -8,6 +8,7 @@ from src.services.email_workflow import (
     build_email_workflow_for_application,
     build_initial_email_create_notes,
     classify_email_for_workflow,
+    record_email_feedback,
 )
 
 
@@ -141,3 +142,41 @@ def test_apply_gmail_preview_preserves_rejection_default(tmp_path: Path) -> None
     assert action == "updated"
     assert updated["status"] == "Rejected"
     assert updated["rejection_reason"] == "Rejected based on Gmail recruiting email."
+
+
+def test_manual_feedback_overrides_similar_future_email(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    init_db(db_path)
+    application_id = create_application(
+        {
+            "company": "SAP",
+            "role": "QA Engineer",
+            "application_date": "2026-05-14",
+            "status": "Applied",
+        },
+        db_path=db_path,
+    )
+    applications = get_applications(db_path)
+    subject = "Update for your SAP QA Engineer application"
+    body = "SAP would like to continue with your QA Engineer application."
+    workflow = classify_email_for_workflow(subject, body, applications)
+
+    record_email_feedback(
+        subject=subject,
+        body=body,
+        classification=workflow["classification"],
+        details=workflow["details"],
+        corrected_category="Interview Invitation",
+        corrected_status="Interview Scheduled",
+        corrected_application_id=application_id,
+        applications=applications,
+        db_path=db_path,
+    )
+
+    corrected = classify_email_for_workflow(subject, body, applications, db_path=db_path, use_feedback=True)
+
+    assert corrected["classification"]["feedback_override"] is True
+    assert corrected["classification"]["category"] == "Interview Invitation"
+    assert corrected["classification"]["suggested_status"] == "Interview Scheduled"
+    assert corrected["match"]["application_id"] == application_id
+    assert corrected["match"]["feedback_override"] is True

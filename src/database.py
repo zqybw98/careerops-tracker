@@ -229,6 +229,73 @@ def get_application_events(
     return [dict(row) for row in rows]
 
 
+def create_email_feedback(
+    payload: dict[str, Any],
+    db_path: Path | str = DEFAULT_DB_PATH,
+    source: str = "manual_feedback",
+) -> int:
+    now = _now()
+    fields = [
+        "email_signature",
+        "subject",
+        "predicted_category",
+        "predicted_status",
+        "corrected_category",
+        "corrected_status",
+        "corrected_application_id",
+        "corrected_company",
+        "corrected_role",
+        "source",
+        "created_at",
+    ]
+    values = [
+        str(payload.get("email_signature", "") or "").strip(),
+        str(payload.get("subject", "") or "").strip(),
+        str(payload.get("predicted_category", "") or "").strip(),
+        str(payload.get("predicted_status", "") or "").strip(),
+        str(payload.get("corrected_category", "") or "").strip(),
+        str(payload.get("corrected_status", "") or "").strip(),
+        int(payload["corrected_application_id"]) if payload.get("corrected_application_id") else None,
+        str(payload.get("corrected_company", "") or "").strip(),
+        str(payload.get("corrected_role", "") or "").strip(),
+        source,
+        now,
+    ]
+
+    if not values[0]:
+        raise ValueError("Email feedback requires an email signature.")
+
+    with get_connection(db_path) as connection:
+        cursor = connection.execute(
+            f"""
+            INSERT INTO email_feedback ({", ".join(fields)})
+            VALUES ({", ".join(["?"] * len(fields))})
+            """,
+            values,
+        )
+        if cursor.lastrowid is None:
+            raise RuntimeError("Failed to create email feedback record.")
+        connection.commit()
+        return cursor.lastrowid
+
+
+def get_email_feedback(
+    db_path: Path | str = DEFAULT_DB_PATH,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    with get_connection(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT *
+            FROM email_feedback
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
 def _clean_payload(payload: dict[str, Any]) -> dict[str, Any]:
     cleaned: dict[str, Any] = {}
     for column in APPLICATION_COLUMNS:
@@ -301,6 +368,8 @@ def _migration_is_satisfied(connection: sqlite3.Connection, version: int) -> boo
         return _table_exists(connection, "applications") and _table_exists(connection, "application_events")
     if version == 2:
         return _column_exists(connection, "applications", "rejection_reason")
+    if version == 3:
+        return _table_exists(connection, "email_feedback")
     return False
 
 

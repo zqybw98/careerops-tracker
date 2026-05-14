@@ -14,6 +14,7 @@ matching section, GitHub generates release notes automatically.
 - Versioned SQLite migrations with a lightweight `schema_version` table.
 - Activity log support for application changes and assistant-driven updates.
 - Decision analytics, inline dashboard editing, and richer Email Assistant recommendations.
+- Manual correction feedback for email category, suggested status, and matched application preferences.
 
 ### Changed
 

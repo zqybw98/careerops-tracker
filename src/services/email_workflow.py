@@ -5,20 +5,36 @@ from pathlib import Path
 from typing import Any
 
 from src.action_recommender import build_next_action_recommendation, build_workflow_decision
-from src.database import DEFAULT_DB_PATH, create_application, update_application
+from src.config_loader import get_email_classification_config
+from src.database import (
+    DEFAULT_DB_PATH,
+    create_application,
+    create_email_feedback,
+    get_email_feedback,
+    update_application,
+)
 from src.email_classifier import classify_email
+from src.email_feedback import (
+    apply_feedback_to_classification,
+    apply_feedback_to_match,
+    build_email_signature,
+    find_best_email_feedback,
+)
 from src.email_insights import build_operation_summary
 from src.email_parser import (
     extract_application_details,
     match_application_from_email,
     rank_application_matches_from_email,
 )
+from src.models import STATUS_OPTIONS
 
 
 def classify_email_for_workflow(
     subject: str,
     body: str,
     applications: list[dict[str, Any]],
+    db_path: Path | str = DEFAULT_DB_PATH,
+    use_feedback: bool = False,
 ) -> dict[str, Any]:
     classification = classify_email(subject=subject, body=body)
     details = extract_application_details(subject=subject, body=body)
@@ -34,12 +50,68 @@ def classify_email_for_workflow(
         body=body,
         extracted_details=details,
     )
+    feedback = None
+    if use_feedback:
+        feedback = find_best_email_feedback(
+            subject,
+            body,
+            details,
+            get_email_feedback(db_path=db_path),
+        )
+        classification = apply_feedback_to_classification(classification, feedback)
+        match, match_candidates = apply_feedback_to_match(match, match_candidates, feedback, applications)
+
     return {
         "classification": classification,
         "details": details,
         "match": match,
         "match_candidates": match_candidates,
+        "feedback": feedback,
     }
+
+
+def get_email_category_options() -> list[str]:
+    categories = [rule["category"] for rule in get_email_classification_config()["category_rules"]]
+    return [*categories, "Other"] if "Other" not in categories else categories
+
+
+def record_email_feedback(
+    subject: str,
+    body: str,
+    classification: dict[str, Any],
+    details: dict[str, str],
+    corrected_category: str,
+    corrected_status: str,
+    corrected_application_id: int | None,
+    applications: list[dict[str, Any]],
+    db_path: Path | str = DEFAULT_DB_PATH,
+) -> int:
+    corrected_application = None
+    if corrected_application_id:
+        corrected_application = next(
+            (item for item in applications if int(item.get("id") or 0) == corrected_application_id),
+            None,
+        )
+
+    category = (
+        corrected_category if corrected_category in get_email_category_options() else str(classification["category"])
+    )
+    status = corrected_status if corrected_status in STATUS_OPTIONS else str(classification["suggested_status"])
+    return create_email_feedback(
+        {
+            "email_signature": build_email_signature(subject, body, details),
+            "subject": subject,
+            "predicted_category": classification.get("category", ""),
+            "predicted_status": classification.get("suggested_status", ""),
+            "corrected_category": category,
+            "corrected_status": status,
+            "corrected_application_id": corrected_application_id,
+            "corrected_company": corrected_application.get("company", "") if corrected_application else "",
+            "corrected_role": corrected_application.get("role", "") if corrected_application else "",
+        },
+        db_path=db_path,
+        source="manual_feedback",
+    )
 
 
 def build_email_create_recommendation(

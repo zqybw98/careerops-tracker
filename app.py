@@ -55,6 +55,8 @@ from src.services.email_workflow import (
     build_gmail_sync_preview,
     build_initial_email_create_notes,
     classify_email_for_workflow,
+    get_email_category_options,
+    record_email_feedback,
 )
 
 DASHBOARD_EDITOR_COLUMNS = [
@@ -562,16 +564,19 @@ def render_applications(applications: list[dict]) -> None:
 
 def render_email_assistant(applications: list[dict]) -> None:
     st.subheader("Classify Recruiting Email")
-    subject = st.text_input("Email subject")
-    body = st.text_area("Email body", height=220)
+    subject = st.text_input("Email subject", key="email_subject_input")
+    body = st.text_area("Email body", height=220, key="email_body_input")
 
     if st.button("Classify email"):
         st.session_state.pop("email_create_success_message", None)
-        workflow = classify_email_for_workflow(subject=subject, body=body, applications=applications)
+        workflow = classify_email_for_workflow(subject=subject, body=body, applications=applications, use_feedback=True)
+        st.session_state["last_email_subject"] = subject
+        st.session_state["last_email_body"] = body
         st.session_state["last_classification"] = workflow["classification"]
         st.session_state["last_email_details"] = workflow["details"]
         st.session_state["last_application_match"] = workflow["match"]
         st.session_state["last_application_matches"] = workflow["match_candidates"]
+        st.session_state["last_email_feedback"] = workflow["feedback"]
 
     result = st.session_state.get("last_classification")
     if not result:
@@ -581,6 +586,7 @@ def render_email_assistant(applications: list[dict]) -> None:
     details = st.session_state.get("last_email_details", {})
     match = st.session_state.get("last_application_match")
     match_candidates = st.session_state.get("last_application_matches", [])
+    feedback = st.session_state.get("last_email_feedback")
     create_recommendation = build_email_create_recommendation(result, details)
 
     render_email_analysis_report(
@@ -590,6 +596,19 @@ def render_email_assistant(applications: list[dict]) -> None:
         match_candidates,
         create_recommendation,
         has_applications=bool(applications),
+    )
+    if feedback:
+        st.success(
+            "Saved manual feedback was applied to this email "
+            f"({float(feedback.get('similarity') or 0):.0%} similarity)."
+        )
+
+    render_email_feedback_controls(
+        applications=applications,
+        classification=result,
+        details=details,
+        match=match,
+        match_candidates=match_candidates,
     )
 
     if applications:
@@ -743,6 +762,90 @@ def render_email_assistant(applications: list[dict]) -> None:
                     f"Application created from email: {company.strip()} / {role.strip()}."
                 )
                 st.rerun()
+
+
+def render_email_feedback_controls(
+    applications: list[dict],
+    classification: dict,
+    details: dict[str, str],
+    match: dict | None,
+    match_candidates: list[dict],
+) -> None:
+    success_message = st.session_state.pop("email_feedback_success_message", None)
+    if success_message:
+        st.success(success_message)
+
+    with st.expander("Correction Feedback", expanded=bool(classification.get("feedback_override"))):
+        st.caption(
+            "Save a manual correction when the assistant picked the wrong category, status, or application. "
+            "Similar future emails will use this preference before applying workflow actions."
+        )
+        category_options = get_email_category_options()
+        labels = ["No application preference"]
+        label_id_map: dict[str, int] = {}
+        default_application_index = 0
+        if applications:
+            label_id_map = _application_label_id_map(applications)
+            labels.extend(label_id_map.keys())
+            default_match = match or (match_candidates[0] if match_candidates else None)
+            if default_match:
+                matched_id = int(default_match.get("application_id") or 0)
+                matched_label = next((label for label in labels[1:] if label_id_map[label] == matched_id), "")
+                default_application_index = labels.index(matched_label) if matched_label else 0
+
+        col_category, col_status, col_application = st.columns(3)
+        corrected_category = col_category.selectbox(
+            "Correct category",
+            category_options,
+            index=_option_index(category_options, str(classification.get("category") or "Other")),
+            key="email_feedback_category",
+        )
+        corrected_status = col_status.selectbox(
+            "Correct status",
+            STATUS_OPTIONS,
+            index=_option_index(STATUS_OPTIONS, str(classification.get("suggested_status") or "Applied")),
+            key="email_feedback_status",
+        )
+        corrected_label = col_application.selectbox(
+            "Correct matched application",
+            labels,
+            index=default_application_index,
+            key="email_feedback_application",
+        )
+        corrected_application_id = label_id_map.get(corrected_label)
+
+        if st.button("Save correction feedback", key="save_email_feedback"):
+            subject = str(st.session_state.get("last_email_subject", ""))
+            body = str(st.session_state.get("last_email_body", ""))
+            if not subject and not body:
+                st.warning("Classify an email before saving feedback.")
+                return
+
+            feedback_id = record_email_feedback(
+                subject=subject,
+                body=body,
+                classification=classification,
+                details=details,
+                corrected_category=corrected_category,
+                corrected_status=corrected_status,
+                corrected_application_id=corrected_application_id,
+                applications=applications,
+            )
+            workflow = classify_email_for_workflow(
+                subject=subject,
+                body=body,
+                applications=applications,
+                use_feedback=True,
+            )
+            st.session_state["last_classification"] = workflow["classification"]
+            st.session_state["last_email_details"] = workflow["details"]
+            st.session_state["last_application_match"] = workflow["match"]
+            st.session_state["last_application_matches"] = workflow["match_candidates"]
+            st.session_state["last_email_feedback"] = workflow["feedback"]
+            st.session_state["email_feedback_success_message"] = (
+                f"Correction feedback saved as preference #{feedback_id}."
+            )
+            st.rerun()
 
 
 def render_email_analysis_report(
@@ -1064,6 +1167,13 @@ def _matched_label_index(
         if label_id_map[label] == matched_id:
             return index
     return 0
+
+
+def _option_index(options: list[str], value: str) -> int:
+    try:
+        return options.index(value)
+    except ValueError:
+        return 0
 
 
 def _gmail_preview_display_df(previews: list[dict]) -> pd.DataFrame:

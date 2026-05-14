@@ -48,7 +48,7 @@ area to the modules that implement it.
 | Application tracking | Track company, role, location, dates, source links, contacts, notes, rejection reasons, statuses, and next actions. | `app.py`, `src/database.py`, `src/models.py` |
 | Import/export | Import English or Chinese CSV files, re-import updated files without duplicates, export records, load demo data, and clean older duplicate rows. | `src/csv_importer.py`, `src/demo_data.py`, `src/database.py` |
 | Dashboard and editing | View pipeline metrics, status charts, pending actions, recent applications, decision analytics, and inline-edit key fields. | `src/dashboard.py`, `src/analytics.py`, `src/reminder_engine.py`, `app.py` |
-| Email Assistant | Classify recruiting emails, extract application context, rank top matches, apply confidence gates, recommend next actions, and generate operation summaries. | `src/services/email_workflow.py`, `src/email_classifier.py`, `src/email_parser.py`, `src/email_insights.py`, `src/action_recommender.py` |
+| Email Assistant | Classify recruiting emails, extract application context, rank top matches, apply confidence gates, save manual correction feedback, recommend next actions, and generate operation summaries. | `src/services/email_workflow.py`, `src/email_classifier.py`, `src/email_parser.py`, `src/email_feedback.py`, `src/email_insights.py`, `src/action_recommender.py` |
 | Templates | Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement drafts. | `src/email_templates.py`, `app.py` |
 | Activity traceability | Record creates, updates, imports, email-assistant actions, dashboard edits, duplicate cleanup, and deletes. | `src/database.py` |
 | Configurable rules | Tune category keywords, parser patterns, matching thresholds, rejection reason patterns, and reminder timing without changing core logic. | `config/`, `src/config_loader.py` |
@@ -70,6 +70,7 @@ area to the modules that implement it.
 | `src/models.py` | Shared status options, application columns, and classification result shape. |
 | `src/dashboard.py` | Aggregates applications into total, weekly, waiting, interview, assessment, and rejection metrics. |
 | `src/email_classifier.py` | Rule-based recruiting email classification with confidence scores and suggested next actions. |
+| `src/email_feedback.py` | Builds email signatures, finds similar correction feedback, and applies category or application-match overrides. |
 | `src/email_parser.py` | Extracts company, role, location, contact, source-link, deadline, interview-date, and rejection-reason hints from pasted email text, then ranks existing application matches. |
 | `src/email_insights.py` | Converts classification, extracted context, and ranked matches into explainable Email Assistant report rows. |
 | `src/email_templates.py` | Generates rule-based follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails. |
@@ -147,6 +148,23 @@ version without rerunning unsafe `ALTER TABLE` statements.
 | `version` | Numeric migration version from the SQL filename. |
 | `name` | Migration filename stem, for example `002_add_rejection_reason`. |
 | `applied_at` | UTC timestamp when the migration was applied or baselined. |
+
+### `email_feedback`
+
+| Field | Purpose |
+| --- | --- |
+| `id` | Auto-incrementing feedback id. |
+| `email_signature` | Normalized token signature used to compare similar future emails. |
+| `subject` | Original email subject used when the correction was saved. |
+| `predicted_category` | Category predicted before the user corrected the assistant. |
+| `predicted_status` | Suggested status predicted before correction. |
+| `corrected_category` | User-approved email category. |
+| `corrected_status` | User-approved suggested application status. |
+| `corrected_application_id` | User-approved application match, if one was selected. |
+| `corrected_company` | Snapshot of the corrected application company. |
+| `corrected_role` | Snapshot of the corrected application role. |
+| `source` | Feedback source, currently `manual_feedback`. |
+| `created_at` | UTC timestamp when the correction was recorded. |
 
 The database is local and ignored by Git (`data/`), so sample data and tests
 can be shared without exposing personal job search records.
@@ -251,6 +269,15 @@ matching evidence, status action, and next step. When an Email Assistant action
 is applied, the summary is appended to the application notes so later review can
 trace why the update happened.
 
+The assistant also has a manual correction loop. When the user corrects the
+category, suggested status, or matched application, the correction is stored as
+`email_feedback` with a normalized signature of the email. Future similar emails
+are checked against recent feedback before workflow actions are applied. A
+matching correction raises confidence, adds a visible `manual feedback override`
+keyword, and can promote the corrected application as the top match. This keeps
+the behavior deterministic while making the assistant feel adaptive without
+requiring an ML model.
+
 ## Email Template Generation
 
 The Templates tab generates editable, rule-based career email drafts from an
@@ -314,8 +341,9 @@ created by older append-only imports.
 
 The project uses pytest for fast regression tests:
 
-- database tests verify application creation, updates, sync imports, duplicate cleanup, and activity events
+- database tests verify application creation, updates, sync imports, duplicate cleanup, activity events, and email feedback persistence
 - email classifier tests verify core recruiting email categories
+- email workflow tests verify manual correction feedback overrides for similar future emails
 - email template tests verify suggested template types and generated draft content
 - reminder tests verify follow-up, interview, assessment, and closed-status logic
 - demo data tests verify sample CSV loading and idempotent import behavior
