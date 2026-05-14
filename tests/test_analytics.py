@@ -3,11 +3,17 @@ from datetime import date
 from src.analytics import (
     build_applications_per_month,
     build_average_waiting_days_by_company,
+    build_channel_role_type_matrix,
+    build_follow_up_effectiveness,
     build_interview_conversion_by_role_type,
+    build_interview_to_offer_funnel,
     build_pipeline_health,
+    build_rejection_reason_breakdown,
     build_response_rate_by_source,
     build_saved_vs_applied_summary,
     build_stale_pipeline_breakdown,
+    build_time_to_first_response_by_source,
+    infer_rejection_reason,
     infer_role_type,
     infer_source,
 )
@@ -146,3 +152,140 @@ def test_monthly_volume_saved_conversion_and_source_inference() -> None:
         {"stage": "Saved only", "applications": 1},
         {"stage": "Submitted / active", "applications": 2},
     ]
+
+
+def test_time_to_first_response_uses_status_history_by_source() -> None:
+    applications = [
+        {
+            "id": 1,
+            "role": "QA",
+            "application_date": "2026-05-01",
+            "status": "Interview Scheduled",
+            "source_link": "https://www.linkedin.com/jobs/view/1",
+        },
+        {
+            "id": 2,
+            "role": "Developer",
+            "application_date": "2026-05-02",
+            "status": "Rejected",
+            "source_link": "https://jobs.lever.co/example",
+        },
+    ]
+    events = [
+        {
+            "application_id": 1,
+            "event_type": "status_changed",
+            "new_value": "Confirmation Received",
+            "created_at": "2026-05-03T10:00:00+00:00",
+        },
+        {
+            "application_id": 1,
+            "event_type": "status_changed",
+            "new_value": "Interview Scheduled",
+            "created_at": "2026-05-04T10:00:00+00:00",
+        },
+        {
+            "application_id": 2,
+            "event_type": "status_changed",
+            "new_value": "Rejected",
+            "created_at": "2026-05-08T10:00:00+00:00",
+        },
+    ]
+
+    rows = build_time_to_first_response_by_source(applications, events)
+    by_source = {row["source"]: row for row in rows}
+
+    assert by_source["LinkedIn"]["average_days_to_first_response"] == 2.0
+    assert by_source["Company Career Page / ATS"]["average_days_to_first_response"] == 6.0
+
+
+def test_rejection_reason_breakdown_groups_known_patterns() -> None:
+    applications = [
+        {
+            "status": "Rejected",
+            "rejection_reason": "The position closed before the final selection.",
+        },
+        {
+            "status": "Rejected",
+            "rejection_reason": "",
+        },
+        {
+            "status": "Applied",
+            "rejection_reason": "position closed",
+        },
+    ]
+
+    rows = build_rejection_reason_breakdown(applications)
+
+    assert infer_rejection_reason("position closed") == "Position closed or filled."
+    assert {"rejection_reason": "Position closed or filled.", "applications": 1} in rows
+    assert {"rejection_reason": "Unspecified / not recorded", "applications": 1} in rows
+
+
+def test_follow_up_effectiveness_groups_current_outcomes() -> None:
+    applications = [
+        {"id": 1, "status": "Assessment", "follow_up_date": ""},
+        {"id": 2, "status": "No Response", "follow_up_date": "2026-05-14"},
+        {"id": 3, "status": "Applied", "follow_up_date": ""},
+    ]
+    events = [
+        {
+            "application_id": 1,
+            "event_type": "follow_up_date_changed",
+            "new_value": "2026-05-14",
+            "created_at": "2026-05-07T10:00:00+00:00",
+        }
+    ]
+
+    rows = build_follow_up_effectiveness(applications, events)
+
+    assert {"outcome": "Interview or assessment", "applications": 1, "share": 0.5} in rows
+    assert {"outcome": "No response / archived", "applications": 1, "share": 0.5} in rows
+
+
+def test_interview_to_offer_funnel_uses_historical_statuses() -> None:
+    applications = [
+        {"id": 1, "status": "Rejected"},
+        {"id": 2, "status": "Offer"},
+        {"id": 3, "status": "Saved"},
+    ]
+    events = [
+        {"application_id": 1, "event_type": "status_changed", "new_value": "Interview Scheduled"},
+        {"application_id": 1, "event_type": "status_changed", "new_value": "Assessment"},
+    ]
+
+    rows = build_interview_to_offer_funnel(applications, events)
+    by_stage = {row["stage"]: row for row in rows}
+
+    assert by_stage["Submitted"]["applications"] == 2
+    assert by_stage["First response"]["applications"] == 2
+    assert by_stage["Interview"]["applications"] == 2
+    assert by_stage["Assessment"]["applications"] == 2
+    assert by_stage["Offer"]["applications"] == 1
+
+
+def test_channel_role_type_matrix_combines_source_and_role_type() -> None:
+    applications = [
+        {
+            "role": "QA Automation Intern",
+            "status": "Interview Scheduled",
+            "source_link": "https://www.linkedin.com/jobs/view/1",
+        },
+        {
+            "role": "QA Tester",
+            "status": "Applied",
+            "source_link": "https://www.linkedin.com/jobs/view/2",
+        },
+        {
+            "role": "Backend Developer",
+            "status": "Rejected",
+            "source_link": "https://jobs.lever.co/example",
+        },
+    ]
+
+    rows = build_channel_role_type_matrix(applications)
+    by_key = {(row["source"], row["role_type"]): row for row in rows}
+
+    assert by_key[("LinkedIn", "QA / Testing")]["applications"] == 2
+    assert by_key[("LinkedIn", "QA / Testing")]["response_rate"] == 0.5
+    assert by_key[("Company Career Page / ATS", "Software Engineering")]["response_rate"] == 1.0

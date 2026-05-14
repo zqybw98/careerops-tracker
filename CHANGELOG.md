@@ -16,6 +16,7 @@ matching section, GitHub generates release notes automatically.
 - Decision analytics, inline dashboard editing, and richer Email Assistant recommendations.
 - Manual correction feedback for email category, suggested status, and matched application preferences.
 - Applications-page search, date-range filtering, stale-only filtering, and bulk maintenance actions.
+- Decision analytics for time-to-first-response, rejection reason breakdown, follow-up outcomes, interview-to-offer funnel, and channel x role-type combinations.
 
 ### Changed
 

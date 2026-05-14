@@ -34,7 +34,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Edit key application fields directly from the dashboard recent-applications table.
 - Search and filter applications by company or role, source/contact text, date range, status, and stale-only views.
 - Use bulk application actions to archive records, mark no response, or set follow-up dates from the Applications page.
-- Analyze response rate by source, monthly application volume, role-type conversion, waiting days, and stale pipeline risk.
+- Analyze response rate by source, monthly application volume, role-type conversion, waiting days, stale pipeline risk, time-to-first-response, rejection reasons, follow-up outcomes, interview-to-offer funnel, and channel x role-type combinations.
 - Navigate through a simplified sidebar workspace layout: Overview, Applications, Email Assistant, and Data & Settings.
 - Load demo applications to preview the dashboard immediately after setup.
 - Import and export applications with CSV, including common English and Chinese headers.

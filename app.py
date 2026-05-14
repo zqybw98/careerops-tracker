@@ -8,11 +8,16 @@ import streamlit as st
 from src.analytics import (
     build_applications_per_month,
     build_average_waiting_days_by_company,
+    build_channel_role_type_matrix,
+    build_follow_up_effectiveness,
     build_interview_conversion_by_role_type,
+    build_interview_to_offer_funnel,
     build_pipeline_health,
+    build_rejection_reason_breakdown,
     build_response_rate_by_source,
     build_saved_vs_applied_summary,
     build_stale_pipeline_breakdown,
+    build_time_to_first_response_by_source,
 )
 from src.application_filters import build_bulk_update_payload, filter_applications
 from src.csv_importer import normalize_import_rows
@@ -197,6 +202,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
         return
 
     df = pd.DataFrame(applications)
+    events = get_application_events()
 
     recent_title_col, recent_action_col = st.columns([4, 1])
     recent_title_col.subheader("Recent Applications")
@@ -357,6 +363,108 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
         saved_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Applications")
         _style_bar_labels(saved_fig)
         st.plotly_chart(saved_fig, use_container_width=True)
+
+    response_time_col, rejection_reason_col = st.columns(2)
+    with response_time_col:
+        response_time_df = pd.DataFrame(build_time_to_first_response_by_source(applications, events))
+        if response_time_df.empty:
+            st.info("Status-change history will show time-to-first-response by source.")
+        else:
+            response_time_fig = px.bar(
+                response_time_df,
+                x="source",
+                y="average_days_to_first_response",
+                color="source",
+                title="Time to First Response by Source",
+                hover_data=["responses"],
+                text="average_days_to_first_response",
+            )
+            response_time_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Average days")
+            _style_bar_labels(response_time_fig, texttemplate="%{text:.1f} days")
+            st.plotly_chart(response_time_fig, use_container_width=True)
+
+    with rejection_reason_col:
+        rejection_df = pd.DataFrame(build_rejection_reason_breakdown(applications))
+        if rejection_df.empty:
+            st.info("Rejected applications with reasons will show a breakdown here.")
+        else:
+            rejection_fig = px.bar(
+                rejection_df,
+                x="applications",
+                y="rejection_reason",
+                orientation="h",
+                title="Rejection Reason Breakdown",
+                text="applications",
+            )
+            rejection_fig.update_layout(xaxis_title="Applications", yaxis_title="")
+            _style_bar_labels(rejection_fig)
+            st.plotly_chart(rejection_fig, use_container_width=True)
+
+    funnel_col, follow_up_col = st.columns(2)
+    with funnel_col:
+        funnel_df = _with_rate_percent(
+            pd.DataFrame(build_interview_to_offer_funnel(applications, events)),
+            "conversion_rate",
+        )
+        if funnel_df.empty:
+            st.info("Application status history will show interview-to-offer funnel.")
+        else:
+            funnel_fig = px.bar(
+                funnel_df,
+                x="stage",
+                y="applications",
+                color="stage",
+                title="Interview-to-Offer Funnel",
+                hover_data=["conversion_rate_label"],
+                text="applications",
+            )
+            funnel_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Applications")
+            _style_bar_labels(funnel_fig)
+            st.plotly_chart(funnel_fig, use_container_width=True)
+
+    with follow_up_col:
+        follow_up_df = _with_rate_percent(pd.DataFrame(build_follow_up_effectiveness(applications, events)), "share")
+        if follow_up_df.empty:
+            st.info("Applications with follow-up dates will show follow-up effectiveness.")
+        else:
+            follow_up_fig = px.bar(
+                follow_up_df,
+                x="outcome",
+                y="applications",
+                color="outcome",
+                title="Follow-up Effectiveness",
+                hover_data=["share_label"],
+                text="applications",
+            )
+            follow_up_fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Applications")
+            _style_bar_labels(follow_up_fig)
+            st.plotly_chart(follow_up_fig, use_container_width=True)
+
+    matrix_df = _with_rate_percent(pd.DataFrame(build_channel_role_type_matrix(applications)), "response_rate")
+    if not matrix_df.empty:
+        matrix_df = _with_rate_percent(matrix_df, "interview_rate")
+        st.subheader("Channel x Role-Type Cross Analysis")
+        st.dataframe(
+            matrix_df[
+                [
+                    "source",
+                    "role_type",
+                    "applications",
+                    "response_rate_label",
+                    "interview_rate_label",
+                ]
+            ].rename(
+                columns={
+                    "source": "Source",
+                    "role_type": "Role type",
+                    "applications": "Applications",
+                    "response_rate_label": "Response rate",
+                    "interview_rate_label": "Interview rate",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def _go_to_applications_workspace() -> None:

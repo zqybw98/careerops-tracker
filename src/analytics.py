@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
+from src.config_loader import get_email_parser_config
 from src.models import CLOSED_STATUSES
 
 RESPONDED_STATUSES = {
@@ -20,6 +21,29 @@ INTERVIEW_CONVERSION_STATUSES = {
     "Assessment",
     "Offer",
 }
+
+FUNNEL_STAGES = (
+    (
+        "Submitted",
+        {
+            "Applied",
+            "Confirmation Received",
+            "Interview Scheduled",
+            "Assessment",
+            "Offer",
+            "Rejected",
+            "No Response",
+            "Follow-up Needed",
+        },
+    ),
+    ("First response", RESPONDED_STATUSES),
+    ("Interview", {"Interview Scheduled", "Assessment", "Offer"}),
+    ("Assessment", {"Assessment", "Offer"}),
+    ("Offer", {"Offer"}),
+)
+
+UNSPECIFIED_REJECTION_REASON = "Unspecified / not recorded"
+CUSTOM_REJECTION_REASON = "Other / custom reason"
 
 SOURCE_PATTERNS = (
     ("LinkedIn", ("linkedin",)),
@@ -210,6 +234,146 @@ def build_saved_vs_applied_summary(applications: list[dict[str, Any]]) -> list[d
     ]
 
 
+def build_time_to_first_response_by_source(
+    applications: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+) -> list[dict[str, float | int | str]]:
+    response_dates = _first_response_dates_by_application(applications, events)
+    grouped_days: dict[str, list[int]] = defaultdict(list)
+
+    for application in applications:
+        application_id = _application_id(application)
+        application_date = _parse_date(application.get("application_date"))
+        if application_id is None:
+            continue
+        response_date = response_dates.get(application_id)
+        if application_date is None or response_date is None:
+            continue
+        grouped_days[infer_source(application)].append(max((response_date - application_date).days, 0))
+
+    rows: list[dict[str, float | int | str]] = [
+        {
+            "source": source,
+            "responses": len(days),
+            "average_days_to_first_response": round(sum(days) / len(days), 1),
+        }
+        for source, days in grouped_days.items()
+    ]
+    return sorted(rows, key=lambda row: (-int(row["responses"]), float(row["average_days_to_first_response"])))
+
+
+def build_rejection_reason_breakdown(applications: list[dict[str, Any]]) -> list[dict[str, int | str]]:
+    counts: dict[str, int] = defaultdict(int)
+
+    for application in applications:
+        if _status(application) != "Rejected":
+            continue
+        reason = infer_rejection_reason(application.get("rejection_reason") or application.get("notes") or "")
+        counts[reason] += 1
+
+    return [
+        {"rejection_reason": reason, "applications": count}
+        for reason, count in sorted(counts.items(), key=lambda value: (-value[1], value[0]))
+    ]
+
+
+def build_follow_up_effectiveness(
+    applications: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+) -> list[dict[str, float | int | str]]:
+    follow_up_application_ids: set[int] = set()
+    for event in events:
+        application_id = _event_application_id(event)
+        if (
+            application_id is not None
+            and event.get("event_type") == "follow_up_date_changed"
+            and str(event.get("new_value") or "").strip()
+        ):
+            follow_up_application_ids.add(application_id)
+
+    for application in applications:
+        application_id = _application_id(application)
+        if application_id is not None and str(application.get("follow_up_date") or "").strip():
+            follow_up_application_ids.add(application_id)
+
+    counts: dict[str, int] = defaultdict(int)
+    applications_by_id = {
+        application_id: application
+        for application in applications
+        for application_id in [_application_id(application)]
+        if application_id is not None
+    }
+    for application_id in follow_up_application_ids:
+        selected_application = applications_by_id.get(application_id)
+        if selected_application is None:
+            continue
+        counts[_follow_up_outcome(selected_application)] += 1
+
+    total = sum(counts.values())
+    return [
+        {
+            "outcome": outcome,
+            "applications": count,
+            "share": _safe_rate(count, total),
+        }
+        for outcome, count in sorted(counts.items(), key=lambda value: (-value[1], value[0]))
+    ]
+
+
+def build_interview_to_offer_funnel(
+    applications: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+) -> list[dict[str, float | int | str]]:
+    status_history = _status_history_by_application(events)
+    stage_counts: dict[str, int] = {stage: 0 for stage, _ in FUNNEL_STAGES}
+
+    for application in applications:
+        application_id = _application_id(application)
+        statuses = status_history.get(application_id, set()) if application_id is not None else set()
+        statuses = statuses | {_status(application)}
+        for stage, stage_statuses in FUNNEL_STAGES:
+            if statuses & stage_statuses:
+                stage_counts[stage] += 1
+
+    submitted = stage_counts["Submitted"]
+    return [
+        {
+            "stage": stage,
+            "applications": stage_counts[stage],
+            "conversion_rate": _safe_rate(stage_counts[stage], submitted),
+        }
+        for stage, _ in FUNNEL_STAGES
+    ]
+
+
+def build_channel_role_type_matrix(applications: list[dict[str, Any]]) -> list[dict[str, float | int | str]]:
+    groups: dict[tuple[str, str], dict[str, int]] = defaultdict(
+        lambda: {"applications": 0, "responses": 0, "interviews": 0}
+    )
+
+    for application in applications:
+        key = (infer_source(application), infer_role_type(application.get("role", "")))
+        groups[key]["applications"] += 1
+        if _status(application) in RESPONDED_STATUSES:
+            groups[key]["responses"] += 1
+        if _status(application) in INTERVIEW_CONVERSION_STATUSES:
+            groups[key]["interviews"] += 1
+
+    rows: list[dict[str, float | int | str]] = []
+    for (source, role_type), values in groups.items():
+        applications_count = values["applications"]
+        rows.append(
+            {
+                "source": source,
+                "role_type": role_type,
+                "applications": applications_count,
+                "response_rate": _safe_rate(values["responses"], applications_count),
+                "interview_rate": _safe_rate(values["interviews"], applications_count),
+            }
+        )
+    return sorted(rows, key=lambda row: (-int(row["applications"]), str(row["source"]), str(row["role_type"])))
+
+
 def infer_source(application: dict[str, Any]) -> str:
     source_link = str(application.get("source_link") or "").lower()
     notes = str(application.get("notes") or "").lower()
@@ -230,6 +394,17 @@ def infer_role_type(role: object) -> str:
         if any(pattern in role_text for pattern in patterns):
             return label
     return "Other"
+
+
+def infer_rejection_reason(reason_text: object) -> str:
+    normalized_reason = str(reason_text or "").casefold().strip()
+    if not normalized_reason:
+        return UNSPECIFIED_REJECTION_REASON
+
+    for rule in get_email_parser_config()["rejection_reason_rules"]:
+        if any(pattern.casefold() in normalized_reason for pattern in rule["patterns"]):
+            return rule["reason"]
+    return CUSTOM_REJECTION_REASON
 
 
 def _waiting_days_sort_key(row: dict[str, float | int | str]) -> tuple[float, str]:
@@ -267,6 +442,75 @@ def _stale_bucket(days: int | None) -> str:
     return "Stale (14+ days)"
 
 
+def _follow_up_outcome(application: dict[str, Any]) -> str:
+    status = _status(application)
+    if status == "Offer":
+        return "Offer after follow-up"
+    if status in {"Interview Scheduled", "Assessment"}:
+        return "Interview or assessment"
+    if status == "Rejected":
+        return "Rejected after follow-up"
+    if status == "No Response":
+        return "No response / archived"
+    if status in {"Confirmation Received", "Follow-up Needed"}:
+        return "Response or active follow-up"
+    return "Still waiting"
+
+
+def _first_response_dates_by_application(
+    applications: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+) -> dict[int, date]:
+    response_dates: dict[int, date] = {}
+    for event in sorted(events, key=lambda item: str(item.get("created_at", ""))):
+        application_id = _event_application_id(event)
+        if application_id is None or application_id in response_dates:
+            continue
+        if event.get("event_type") == "status_changed" and str(event.get("new_value") or "") in RESPONDED_STATUSES:
+            event_date = _parse_datetime_date(event.get("created_at"))
+            if event_date is not None:
+                response_dates[application_id] = event_date
+
+    for application in applications:
+        application_id = _application_id(application)
+        if application_id is None or application_id in response_dates:
+            continue
+        if _status(application) in RESPONDED_STATUSES:
+            fallback_date = _parse_datetime_date(application.get("updated_at")) or _parse_datetime_date(
+                application.get("created_at")
+            )
+            if fallback_date is not None:
+                response_dates[application_id] = fallback_date
+
+    return response_dates
+
+
+def _status_history_by_application(events: list[dict[str, Any]]) -> dict[int, set[str]]:
+    history: dict[int, set[str]] = defaultdict(set)
+    for event in events:
+        application_id = _event_application_id(event)
+        if application_id is None or event.get("event_type") != "status_changed":
+            continue
+        new_status = str(event.get("new_value") or "").strip()
+        if new_status:
+            history[application_id].add(new_status)
+    return history
+
+
+def _application_id(application: dict[str, Any]) -> int | None:
+    try:
+        return int(application["id"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _event_application_id(event: dict[str, Any]) -> int | None:
+    try:
+        return int(event["application_id"])
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def _parse_date(value: object) -> date | None:
     if value in (None, ""):
         return None
@@ -274,3 +518,12 @@ def _parse_date(value: object) -> date | None:
         return date.fromisoformat(str(value))
     except ValueError:
         return None
+
+
+def _parse_datetime_date(value: object) -> date | None:
+    if value in (None, ""):
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).date()
+    except ValueError:
+        return _parse_date(value)
