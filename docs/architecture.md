@@ -48,6 +48,7 @@ area to the modules that implement it.
 | Application tracking | Track company, role, location, dates, source links, contacts, notes, rejection reasons, statuses, next actions, searchable filters, stale-only views, and bulk maintenance actions. | `app.py`, `src/application_filters.py`, `src/database.py`, `src/models.py` |
 | Contact CRM | Derive recruiter, hiring-manager, referral, source-channel, follow-up, and linked-application views from existing application records and activity events. | `app.py`, `src/contacts.py`, `src/database.py` |
 | Import/export | Import English or Chinese CSV files, re-import updated files without duplicates, export records, load demo data, and clean older duplicate rows. | `src/csv_importer.py`, `src/demo_data.py`, `src/database.py` |
+| Calendar export | Export interview, assessment, offer follow-up, and follow-up dates as `.ics` files or copyable text blocks without calendar OAuth. | `src/calendar_export.py`, `app.py` |
 | Dashboard and editing | View pipeline metrics, status charts, pending actions, recent applications, decision analytics, funnel diagnostics, follow-up outcomes, and inline-edit key fields. | `src/dashboard.py`, `src/analytics.py`, `src/reminder_engine.py`, `app.py` |
 | Email Assistant | Classify recruiting emails, extract application context, handle forwarded or mixed-language messages, rank top matches, apply confidence gates, save manual correction feedback, recommend next actions, and generate operation summaries. | `src/services/email_workflow.py`, `src/email_classifier.py`, `src/email_parser.py`, `src/email_feedback.py`, `src/email_insights.py`, `src/action_recommender.py` |
 | Templates | Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement drafts. | `src/email_templates.py`, `app.py` |
@@ -66,6 +67,7 @@ area to the modules that implement it.
 | `src/action_recommender.py` | Converts classified emails and extracted context into workflow decisions, prioritized next actions, follow-up dates, rationales, and suggested template types. |
 | `src/analytics.py` | Builds decision-oriented metrics such as response rates, conversion, waiting days, monthly volume, stale pipeline breakdowns, response timing, rejection reasons, follow-up outcomes, funnels, and channel-role cross analysis. |
 | `src/application_filters.py` | Applies Applications-page search filters, date-range filtering, stale-only filtering, and bulk action payload rules. |
+| `src/calendar_export.py` | Builds all-day `.ics` events and readable calendar text blocks from dated application actions. |
 | `src/contacts.py` | Builds a contact-centric mini CRM view from application contacts, source links, follow-up dates, and activity events. |
 | `src/config_loader.py` | Loads typed JSON configuration for rule-based modules with a small cached API. |
 | `src/database.py` | SQLite connection management, migration execution, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |

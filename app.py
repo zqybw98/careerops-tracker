@@ -20,6 +20,12 @@ from src.analytics import (
     build_time_to_first_response_by_source,
 )
 from src.application_filters import build_bulk_update_payload, filter_applications
+from src.calendar_export import (
+    build_calendar_items,
+    build_calendar_text_block,
+    build_ics_calendar,
+    calendar_items_to_rows,
+)
 from src.contacts import build_contact_records
 from src.csv_importer import normalize_import_rows
 from src.dashboard import build_summary
@@ -1340,6 +1346,53 @@ def render_data_tools(applications: list[dict]) -> None:
     else:
         st.info("Add or import applications before exporting CSV data.")
 
+    st.subheader("Calendar Export")
+    calendar_items = build_calendar_items(applications)
+    if not calendar_items:
+        st.info("Add follow-up dates to interviews, assessments, or applications to export calendar events.")
+    else:
+        event_type_options = sorted({item.event_type for item in calendar_items})
+        cal_col_a, cal_col_b = st.columns([1, 1.4])
+        selected_event_types = cal_col_a.multiselect(
+            "Event types",
+            event_type_options,
+            default=event_type_options,
+            key="calendar_event_type_filter",
+        )
+        calendar_date_range = cal_col_b.date_input(
+            "Calendar date range",
+            value=(),
+            key="calendar_export_date_range",
+        )
+        calendar_start_date, calendar_end_date = _date_range_bounds(calendar_date_range)
+        filtered_calendar_items = _filter_calendar_items(
+            calendar_items,
+            selected_event_types=selected_event_types,
+            start_date=calendar_start_date,
+            end_date=calendar_end_date,
+        )
+
+        if not filtered_calendar_items:
+            st.info("No calendar events match the current filters.")
+        else:
+            st.dataframe(
+                pd.DataFrame(calendar_items_to_rows(filtered_calendar_items)),
+                use_container_width=True,
+                hide_index=True,
+            )
+            st.download_button(
+                "Download calendar .ics",
+                build_ics_calendar(filtered_calendar_items).encode("utf-8"),
+                file_name="careerops_calendar.ics",
+                mime="text/calendar",
+            )
+            st.text_area(
+                "Calendar text block",
+                value=build_calendar_text_block(filtered_calendar_items),
+                height=220,
+                key="calendar_text_block",
+            )
+
     with st.expander("CSV format"):
         st.code(", ".join(APPLICATION_COLUMNS), language="text")
         st.caption(
@@ -1497,6 +1550,26 @@ def _filter_contact_records(
                 continue
         filtered.append(contact)
 
+    return filtered
+
+
+def _filter_calendar_items(
+    calendar_items: list,
+    *,
+    selected_event_types: list[str],
+    start_date: date | None,
+    end_date: date | None,
+) -> list:
+    event_type_filter = set(selected_event_types)
+    filtered = []
+    for item in calendar_items:
+        if event_type_filter and item.event_type not in event_type_filter:
+            continue
+        if start_date and item.event_date < start_date:
+            continue
+        if end_date and item.event_date > end_date:
+            continue
+        filtered.append(item)
     return filtered
 
 

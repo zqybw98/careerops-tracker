@@ -36,6 +36,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Search and filter applications by company or role, source/contact text, date range, status, and stale-only views.
 - Use bulk application actions to archive records, mark no response, or set follow-up dates from the Applications page.
 - View a contact-centric mini CRM layer for recruiters, hiring managers, referrals, last contact activity, follow-up status, channels, and linked applications.
+- Export interview, assessment, offer follow-up, and follow-up dates as `.ics` calendar files or a copyable calendar text block.
 - Analyze response rate by source, monthly application volume, role-type conversion, waiting days, stale pipeline risk, time-to-first-response, rejection reasons, follow-up outcomes, interview-to-offer funnel, and channel x role-type combinations.
 - Navigate through a simplified sidebar workspace layout: Overview, Applications, Contacts, Email Assistant, and Data & Settings.
 - Load demo applications to preview the dashboard immediately after setup.
@@ -104,6 +105,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- action_recommender.py
 |   |-- analytics.py
 |   |-- application_filters.py
+|   |-- calendar_export.py
 |   |-- config_loader.py
 |   |-- contacts.py
 |   |-- database.py
@@ -125,6 +127,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- test_action_recommender.py
 |   |-- test_analytics.py
 |   |-- test_application_filters.py
+|   |-- test_calendar_export.py
 |   |-- test_config_loader.py
 |   |-- test_contacts.py
 |   |-- test_csv_importer.py
@@ -276,7 +279,7 @@ This project demonstrates practical automation, structured information managemen
 
 - Copy-to-clipboard action for generated email templates.
 - Optional Gmail draft integration.
-- Calendar sync for interviews, assessments, and follow-up dates.
+- Optional Google Calendar sync for interviews, assessments, and follow-up dates.
 - Global activity feed across all application records.
 - ML-based email classification.
 - Weekly analytics export.
