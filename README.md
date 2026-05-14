@@ -35,8 +35,9 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Edit key application fields directly from the dashboard recent-applications table.
 - Search and filter applications by company or role, source/contact text, date range, status, and stale-only views.
 - Use bulk application actions to archive records, mark no response, or set follow-up dates from the Applications page.
+- View a contact-centric mini CRM layer for recruiters, hiring managers, referrals, last contact activity, follow-up status, channels, and linked applications.
 - Analyze response rate by source, monthly application volume, role-type conversion, waiting days, stale pipeline risk, time-to-first-response, rejection reasons, follow-up outcomes, interview-to-offer funnel, and channel x role-type combinations.
-- Navigate through a simplified sidebar workspace layout: Overview, Applications, Email Assistant, and Data & Settings.
+- Navigate through a simplified sidebar workspace layout: Overview, Applications, Contacts, Email Assistant, and Data & Settings.
 - Load demo applications to preview the dashboard immediately after setup.
 - Import and export applications with CSV, including common English and Chinese headers.
 - Re-import updated CSV files without creating duplicate application records.
@@ -104,6 +105,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- analytics.py
 |   |-- application_filters.py
 |   |-- config_loader.py
+|   |-- contacts.py
 |   |-- database.py
 |   |-- csv_importer.py
 |   |-- dashboard.py
@@ -124,6 +126,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- test_analytics.py
 |   |-- test_application_filters.py
 |   |-- test_config_loader.py
+|   |-- test_contacts.py
 |   |-- test_csv_importer.py
 |   |-- test_database.py
 |   |-- test_demo_data.py

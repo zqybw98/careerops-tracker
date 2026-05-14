@@ -29,8 +29,8 @@ flowchart LR
     Dashboard --> UI
 ```
 
-1. The user works through four sidebar workspaces: Overview, Applications,
-   Email Assistant, and Data & Settings.
+1. The user works through five sidebar workspaces: Overview, Applications,
+   Contacts, Email Assistant, and Data & Settings.
 2. The user adds or imports application records in the Streamlit interface.
 3. The app stores records in a local SQLite database under `data/`.
 4. The dashboard reads application records and builds pipeline metrics.
@@ -46,6 +46,7 @@ area to the modules that implement it.
 | Feature area | User-facing capability | Main modules |
 | --- | --- | --- |
 | Application tracking | Track company, role, location, dates, source links, contacts, notes, rejection reasons, statuses, next actions, searchable filters, stale-only views, and bulk maintenance actions. | `app.py`, `src/application_filters.py`, `src/database.py`, `src/models.py` |
+| Contact CRM | Derive recruiter, hiring-manager, referral, source-channel, follow-up, and linked-application views from existing application records and activity events. | `app.py`, `src/contacts.py`, `src/database.py` |
 | Import/export | Import English or Chinese CSV files, re-import updated files without duplicates, export records, load demo data, and clean older duplicate rows. | `src/csv_importer.py`, `src/demo_data.py`, `src/database.py` |
 | Dashboard and editing | View pipeline metrics, status charts, pending actions, recent applications, decision analytics, funnel diagnostics, follow-up outcomes, and inline-edit key fields. | `src/dashboard.py`, `src/analytics.py`, `src/reminder_engine.py`, `app.py` |
 | Email Assistant | Classify recruiting emails, extract application context, handle forwarded or mixed-language messages, rank top matches, apply confidence gates, save manual correction feedback, recommend next actions, and generate operation summaries. | `src/services/email_workflow.py`, `src/email_classifier.py`, `src/email_parser.py`, `src/email_feedback.py`, `src/email_insights.py`, `src/action_recommender.py` |
@@ -65,6 +66,7 @@ area to the modules that implement it.
 | `src/action_recommender.py` | Converts classified emails and extracted context into workflow decisions, prioritized next actions, follow-up dates, rationales, and suggested template types. |
 | `src/analytics.py` | Builds decision-oriented metrics such as response rates, conversion, waiting days, monthly volume, stale pipeline breakdowns, response timing, rejection reasons, follow-up outcomes, funnels, and channel-role cross analysis. |
 | `src/application_filters.py` | Applies Applications-page search filters, date-range filtering, stale-only filtering, and bulk action payload rules. |
+| `src/contacts.py` | Builds a contact-centric mini CRM view from application contacts, source links, follow-up dates, and activity events. |
 | `src/config_loader.py` | Loads typed JSON configuration for rule-based modules with a small cached API. |
 | `src/database.py` | SQLite connection management, migration execution, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |
 | `src/csv_importer.py` | Normalizes English and Chinese CSV headers, dates, and statuses before import. |

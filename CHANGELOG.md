@@ -18,6 +18,7 @@ matching section, GitHub generates release notes automatically.
 - Applications-page search, date-range filtering, stale-only filtering, and bulk maintenance actions.
 - Decision analytics for time-to-first-response, rejection reason breakdown, follow-up outcomes, interview-to-offer funnel, and channel x role-type combinations.
 - Realistic email edge-case coverage for forwarded messages, quoted replies, similar same-company roles, multiple dates, mismatch-based rejections, domain-only recruiter hints, and long mixed-language messages.
+- Contact-centric mini CRM workspace for recruiter, hiring-manager, referral, channel, last-activity, follow-up, and linked-application views.
 
 ### Changed
 
