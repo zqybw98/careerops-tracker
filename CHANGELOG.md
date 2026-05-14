@@ -17,12 +17,14 @@ matching section, GitHub generates release notes automatically.
 - Manual correction feedback for email category, suggested status, and matched application preferences.
 - Applications-page search, date-range filtering, stale-only filtering, and bulk maintenance actions.
 - Decision analytics for time-to-first-response, rejection reason breakdown, follow-up outcomes, interview-to-offer funnel, and channel x role-type combinations.
+- Realistic email edge-case coverage for forwarded messages, quoted replies, similar same-company roles, multiple dates, mismatch-based rejections, domain-only recruiter hints, and long mixed-language messages.
 
 ### Changed
 
 - Project documentation now maps feature areas to implementation modules.
 - Database-focused tests were renamed for clearer ownership.
 - No Response applications no longer create stale follow-up reminders unless a follow-up date is explicitly set.
+- Forwarded email parsing now prefers the original recruiter sender over personal mail forwarding wrappers.
 
 ## [v0.1.0] - 2026-05-07
 

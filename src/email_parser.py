@@ -174,16 +174,13 @@ def _score_application_match(
 def _extract_company(text: str) -> str:
     patterns = PARSER_CONFIG["extraction_patterns"]["company"]
     for pattern in patterns:
-        match = re.search(pattern, text, flags=re.IGNORECASE)
-        if not match:
-            continue
-
-        candidate = match.group(1)
-        if "@" in match.group(0):
-            candidate = _company_from_domain(candidate)
-        candidate = _trim_candidate(candidate)
-        if candidate:
-            return candidate
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            candidate = match.group(1)
+            if "@" in match.group(0):
+                candidate = _company_from_domain(candidate)
+            candidate = _trim_candidate(candidate)
+            if candidate:
+                return candidate
 
     return ""
 
@@ -285,6 +282,17 @@ def _extract_role(text: str) -> str:
 
 
 def _extract_contact(text: str) -> str:
+    from_matches = [
+        _trim_contact(match.group(1))
+        for match in re.finditer(
+            r"(?:from|sender|von)\s*:\s*([^\n<]+<[^>]+>|[^\n]+)",
+            text,
+            flags=re.IGNORECASE,
+        )
+    ]
+    if from_matches:
+        return next((contact for contact in from_matches if not _is_generic_contact(contact)), from_matches[0])
+
     from_match = re.search(r"(?:from|sender|von|发件人)\s*[:：]\s*([^\n<]+<[^>]+>|[^\n]+)", text, flags=re.IGNORECASE)
     if from_match:
         return _trim_contact(from_match.group(1))
@@ -469,6 +477,11 @@ def _trim_contact(value: str) -> str:
     contact = re.split(r"[\n\r]", value.strip(), maxsplit=1)[0]
     contact = re.sub(r"\s+", " ", contact)
     return contact[:120]
+
+
+def _is_generic_contact(value: str) -> bool:
+    domains = _extract_domains_from_value(value)
+    return bool(domains) and all(_domain_company_identity(domain) == "" for domain in domains)
 
 
 def _trim_role(value: str) -> str:

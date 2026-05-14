@@ -239,6 +239,9 @@
       "patterns": [
         "german language",
         "language requirements",
+        "german skills",
+        "deutschkenntnisse",
+        "deutsche sprachkenntnisse",
         "sprachkenntnisse",
         "德语要求",
         "语言要求"
@@ -248,11 +251,25 @@
       "reason": "Visa or work authorization mismatch.",
       "patterns": [
         "visa",
+        "visa sponsorship",
         "work permit",
         "work authorization",
+        "sponsor a visa",
         "arbeitserlaubnis",
         "签证",
         "工作许可"
+      ]
+    },
+    {
+      "reason": "Location requirement mismatch.",
+      "patterns": [
+        "location mismatch",
+        "not based in",
+        "relocation is required",
+        "requires relocation",
+        "standort passt nicht",
+        "arbeitsort passt nicht",
+        "not available at the required location"
       ]
     }
   ],
