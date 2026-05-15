@@ -180,6 +180,8 @@ version without rerunning unsafe `ALTER TABLE` statements.
 
 The database is local and ignored by Git (`data/`), so sample data and tests
 can be shared without exposing personal job search records.
+The default database path is `data/applications.db`; `CAREEROPS_DB_PATH` can be
+set for isolated demo, screenshot, or experiment databases.
 
 Lookup indexes are created through migrations for frequently accessed workflow
 tables:

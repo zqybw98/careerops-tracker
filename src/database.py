@@ -3,12 +3,13 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from os import getenv
 from pathlib import Path
 from typing import Any
 
 from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
 
-DEFAULT_DB_PATH = Path("data/applications.db")
+DEFAULT_DB_PATH = Path(getenv("CAREEROPS_DB_PATH", "data/applications.db"))
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
 
 

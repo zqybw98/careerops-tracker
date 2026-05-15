@@ -34,7 +34,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Apply versioned SQLite migrations through a lightweight `schema_version` table.
 - Tune category keywords, parser patterns, matching thresholds, and reminder timing through JSON configuration files.
 - View a Streamlit dashboard with application metrics and status charts.
-- Edit key application fields directly from the dashboard recent-applications table.
+- Edit key application fields directly from the dashboard recent applications table.
 - Search and filter applications by company or role, source/contact text, date range, status, and stale-only views.
 - Use bulk application actions to archive records, mark no response, or set follow-up dates from the Applications page.
 - View a contact-centric mini CRM layer for recruiters, hiring managers, referrals, last contact activity, follow-up status, channels, and linked applications.
@@ -48,21 +48,21 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 
 ## Screenshots
 
-### Dashboard
+### Overview Dashboard
 
-![Dashboard](docs/screenshots/dashboard.png)
+![Overview Dashboard](docs/screenshots/dashboard.png)
 
-### Application Records
+### Applications Workflow
 
-![Application Records](docs/screenshots/recent-applications.png)
+![Applications Workflow](docs/screenshots/applications.png)
 
-### Email Classification Assistant
+### Contacts CRM
 
-![Email Classification Assistant](docs/screenshots/email-assistant.png)
+![Contacts CRM](docs/screenshots/contacts.png)
 
-### Application Management
+### Email Assistant Workflow
 
-![Application Management](docs/screenshots/applications.png)
+![Email Assistant Workflow](docs/screenshots/email-assistant.png)
 
 ## Tech Stack
 
@@ -161,9 +161,9 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
     |-- deployment.md
     `-- screenshots/
         |-- applications.png
+        |-- contacts.png
         |-- dashboard.png
-        |-- email-assistant.png
-        `-- recent-applications.png
+        `-- email-assistant.png
 ```
 
 ## Getting Started
@@ -198,6 +198,9 @@ Run the app:
 ```bash
 streamlit run app.py
 ```
+
+Optional: set `CAREEROPS_DB_PATH` before running Streamlit if you want a separate
+local database for demos, screenshots, or experiments.
 
 Run tests:
 
