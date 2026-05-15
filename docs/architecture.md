@@ -49,22 +49,22 @@ area to the modules that implement it.
 | --- | --- | --- |
 | Application tracking | Track company, role, location, dates, source links, contacts, notes, rejection reasons, statuses, next actions, searchable filters, stale-only views, and bulk maintenance actions. | `app.py`, `src/application_filters.py`, `src/database.py`, `src/models.py` |
 | Contact CRM | Derive recruiter, hiring-manager, referral, source-channel, follow-up, and linked-application views from existing application records and activity events. | `app.py`, `src/contacts.py`, `src/database.py` |
-| Import/export | Import English or Chinese CSV files, re-import updated files without duplicates, export records, load demo data, and clean older duplicate rows. | `src/csv_importer.py`, `src/demo_data.py`, `src/database.py` |
-| Calendar export | Export interview, assessment, offer follow-up, and follow-up dates as `.ics` files or copyable text blocks without calendar OAuth. | `src/calendar_export.py`, `app.py` |
+| Import/export | Import English or Chinese CSV files, re-import updated files without duplicates, export records, load demo data, and clean older duplicate rows. | `src/ui/data_settings_page.py`, `src/csv_importer.py`, `src/demo_data.py`, `src/database.py` |
+| Calendar export | Export interview, assessment, offer follow-up, and follow-up dates as `.ics` files or copyable text blocks without calendar OAuth. | `src/ui/data_settings_page.py`, `src/calendar_export.py` |
 | Dashboard and editing | View pipeline metrics, status charts, pending actions, recent applications, decision analytics, Germany-specific source tagging, funnel diagnostics, follow-up outcomes, and inline-edit key fields. | `src/dashboard.py`, `src/analytics.py`, `src/reminder_engine.py`, `app.py` |
-| Job Post Intake | Extract company, role, location, source, contact, and deadline hints from job descriptions or job URLs, then create a draft Saved application record. | `src/job_post_parser.py`, `src/services/job_post_workflow.py`, `app.py` |
-| Email Assistant | Classify recruiting emails, extract application context, handle forwarded or mixed-language messages, recognize German rejection and work-authorization patterns, rank top matches, apply confidence gates, save manual correction feedback, recommend next actions, and generate operation summaries. | `src/services/email_workflow.py`, `src/email_classifier.py`, `src/email_parser.py`, `src/email_feedback.py`, `src/email_insights.py`, `src/action_recommender.py` |
-| Templates | Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement drafts in English, German, or Chinese. | `src/email_templates.py`, `app.py` |
+| Job Post Intake | Extract company, role, location, source, contact, and deadline hints from job descriptions or job URLs, then create a draft Saved application record. | `src/ui/email_assistant_page.py`, `src/job_post_parser.py`, `src/services/job_post_workflow.py` |
+| Email Assistant | Classify recruiting emails, extract application context, handle forwarded or mixed-language messages, recognize German rejection and work-authorization patterns, rank top matches, apply confidence gates, save manual correction feedback, recommend next actions, and generate operation summaries. | `src/ui/email_assistant_page.py`, `src/services/email_workflow.py`, `src/email_classifier.py`, `src/email_parser.py`, `src/email_feedback.py`, `src/email_insights.py`, `src/action_recommender.py` |
+| Templates | Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement drafts in English, German, or Chinese. | `src/ui/email_assistant_page.py`, `src/email_templates.py` |
 | Activity traceability | Record creates, updates, imports, email-assistant actions, dashboard edits, duplicate cleanup, and deletes. | `src/database.py` |
 | Configurable rules | Tune category keywords, parser patterns, matching thresholds, rejection reason patterns, and reminder timing without changing core logic. | `config/`, `src/config_loader.py` |
-| Optional Gmail sync | Read recent recruiting emails locally with OAuth, preview classifications, and apply only user-approved actions. | `src/gmail_client.py`, `src/services/email_workflow.py` |
+| Optional Gmail sync | Read recent recruiting emails locally with OAuth, preview classifications, and apply only user-approved actions. | `src/ui/email_assistant_page.py`, `src/gmail_client.py`, `src/services/email_workflow.py` |
 | Engineering quality | Run versioned SQLite migrations, linting, formatting, type checks, pytest, pre-commit hooks, CI, and tag-based releases. | `migrations/`, `pyproject.toml`, `.pre-commit-config.yaml`, `.github/workflows/tests.yml`, `.github/workflows/release.yml`, `CHANGELOG.md`, `tests/` |
 
 ## Components
 
 | Component | Responsibility |
 | --- | --- |
-| `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. Business workflows are delegated to services. |
+| `app.py` | Streamlit app entry point, global styling, sidebar routing, Overview, Applications, and Contacts workspaces. Business workflows are delegated to services and page modules. |
 | `config/` | JSON rule configuration for email classification, email parsing, job-post intake, matching thresholds, and reminder behavior. |
 | `migrations/` | Ordered SQLite schema migrations applied at startup and tracked in `schema_version`. |
 | `src/action_recommender.py` | Converts classified emails and extracted context into workflow decisions, prioritized next actions, follow-up dates, rationales, and suggested template types. |
@@ -87,6 +87,8 @@ area to the modules that implement it.
 | `src/reminder_engine.py` | Generates follow-up, interview, assessment, stale-application, and saved-role reminders. |
 | `src/services/email_workflow.py` | Orchestrates email classification, extracted context, application matching, workflow recommendations, note generation, and Gmail preview application. |
 | `src/services/job_post_workflow.py` | Converts job-post extraction results into Saved application payloads and traceable notes. |
+| `src/ui/email_assistant_page.py` | Streamlit page module for Job Post Intake, email-to-application updates, template generation, and Gmail preview tools. |
+| `src/ui/data_settings_page.py` | Streamlit page module for demo data loading, CSV import/export, duplicate cleanup, and `.ics` calendar export. |
 | `src/demo_data.py` | Loads portfolio-friendly sample data from `samples/sample_applications.csv` without duplicates. |
 | `tests/` | Regression tests for database persistence, config loading, CSV import, email rules, job-post intake, workflow services, analytics, reminders, Gmail preview behavior, and demo data loading. |
 | `pyproject.toml` | Central configuration for Ruff linting, Ruff formatting, and mypy type checking. |
@@ -101,7 +103,7 @@ area to the modules that implement it.
 
 The codebase is moving toward a small three-layer structure:
 
-- `app.py` and future `ui/` modules own display, forms, widgets, and session state.
+- `app.py` and `src/ui/` modules own display, forms, widgets, and session state.
 - `src/services/` owns workflow orchestration that combines classifiers, parsers,
   recommendations, database writes, and note generation.
 - Boundary modules such as `src/database.py`, `src/gmail_client.py`, and

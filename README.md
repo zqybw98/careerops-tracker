@@ -124,10 +124,14 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- job_post_parser.py
 |   |-- models.py
 |   |-- reminder_engine.py
-|   `-- services/
+|   |-- services/
+|   |   |-- __init__.py
+|   |   |-- email_workflow.py
+|   |   `-- job_post_workflow.py
+|   `-- ui/
 |       |-- __init__.py
-|       |-- email_workflow.py
-|       `-- job_post_workflow.py
+|       |-- data_settings_page.py
+|       `-- email_assistant_page.py
 |-- tests/
 |   |-- test_action_recommender.py
 |   |-- test_analytics.py
