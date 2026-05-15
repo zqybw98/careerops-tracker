@@ -50,6 +50,11 @@ SOURCE_PATTERNS = (
     ("StepStone", ("stepstone",)),
     ("Indeed", ("indeed",)),
     ("Xing", ("xing",)),
+    ("Bundesagentur fuer Arbeit", ("arbeitsagentur", "jobboerse.arbeitsagentur")),
+    ("Stellenwerk", ("stellenwerk",)),
+    ("Absolventa", ("absolventa",)),
+    ("Meinestadt", ("meinestadt",)),
+    ("Honeypot", ("honeypot",)),
     ("Glassdoor", ("glassdoor",)),
     ("Join", ("join.com",)),
     (

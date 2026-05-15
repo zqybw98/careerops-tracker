@@ -42,6 +42,25 @@ def test_classifies_german_rejection_email() -> None:
     assert result["suggested_status"] == "Rejected"
 
 
+def test_classifies_common_german_recruiting_phrases() -> None:
+    interview = classify_email(
+        subject="Einladung zum Gespraech",
+        body="Wir moechten Sie zu einem Kennenlerngespraech einladen.",
+    )
+    assessment = classify_email(
+        subject="Fachtest fuer Ihre Bewerbung",
+        body="Bitte bearbeiten Sie die Arbeitsprobe bis Ende der Woche.",
+    )
+    rejection = classify_email(
+        subject="Rueckmeldung zu Ihrer Bewerbung",
+        body="Wir bedauern, Ihnen leider keine positive Rueckmeldung geben zu koennen.",
+    )
+
+    assert interview["category"] == "Interview Invitation"
+    assert assessment["category"] == "Assessment / Coding Test"
+    assert rejection["category"] == "Rejection"
+
+
 def test_classifies_chinese_interview_invitation() -> None:
     result = classify_email(
         subject="面试邀请：软件测试实习生",

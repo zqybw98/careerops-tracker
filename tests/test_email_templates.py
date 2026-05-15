@@ -1,6 +1,6 @@
 from datetime import date
 
-from src.email_templates import generate_email_template, suggest_template_type
+from src.email_templates import TEMPLATE_LANGUAGES, generate_email_template, suggest_template_type
 
 
 def test_suggests_template_type_from_status() -> None:
@@ -49,3 +49,34 @@ def test_generates_rejection_acknowledgement_email() -> None:
 
     assert "Thank you for the update" in result["subject"]
     assert "future opportunities" in result["body"]
+
+
+def test_generates_german_follow_up_email() -> None:
+    result = generate_email_template(
+        {
+            "company": "SAP",
+            "role": "Werkstudent Quality Engineering",
+            "application_date": "2026-05-01",
+        },
+        "Follow-up Email",
+        recipient_name="Recruiting Team",
+        language="German",
+    )
+
+    assert "Rueckfrage zu meiner Bewerbung" in result["subject"]
+    assert "SAP" in result["body"]
+    assert "Werkstudent Quality Engineering" in result["body"]
+    assert "Mit freundlichen Gruessen" in result["body"]
+
+
+def test_generates_chinese_recruiter_outreach_email() -> None:
+    result = generate_email_template(
+        {"company": "Bosch", "role": "QA Automation Intern"},
+        "Recruiter Outreach Email",
+        language="Chinese",
+    )
+
+    assert "咨询 Bosch" in result["subject"]
+    assert "质量保证" in result["body"]
+    assert "祝好" in result["body"]
+    assert "Chinese" in TEMPLATE_LANGUAGES

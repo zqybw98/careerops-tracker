@@ -154,6 +154,15 @@ def test_monthly_volume_saved_conversion_and_source_inference() -> None:
     ]
 
 
+def test_infers_germany_specific_job_sources() -> None:
+    assert (
+        infer_source({"source_link": "https://www.arbeitsagentur.de/jobsuche/jobdetail/123", "notes": ""})
+        == "Bundesagentur fuer Arbeit"
+    )
+    assert infer_source({"source_link": "https://www.stellenwerk.de/berlin/job/456", "notes": ""}) == "Stellenwerk"
+    assert infer_source({"source_link": "", "notes": "Saved from Absolventa search"}) == "Absolventa"
+
+
 def test_time_to_first_response_uses_status_history_by_source() -> None:
     applications = [
         {
@@ -220,6 +229,24 @@ def test_rejection_reason_breakdown_groups_known_patterns() -> None:
     assert infer_rejection_reason("position closed") == "Position closed or filled."
     assert {"rejection_reason": "Position closed or filled.", "applications": 1} in rows
     assert {"rejection_reason": "Unspecified / not recorded", "applications": 1} in rows
+
+
+def test_rejection_reason_breakdown_groups_germany_specific_reasons() -> None:
+    applications = [
+        {
+            "status": "Rejected",
+            "rejection_reason": "Fuer diese Stelle sind C1 Deutschkenntnisse erforderlich.",
+        },
+        {
+            "status": "Rejected",
+            "rejection_reason": "Eine bestehende Arbeitserlaubnis ist erforderlich.",
+        },
+    ]
+
+    rows = build_rejection_reason_breakdown(applications)
+
+    assert {"rejection_reason": "Language requirement mismatch.", "applications": 1} in rows
+    assert {"rejection_reason": "Visa or work authorization mismatch.", "applications": 1} in rows
 
 
 def test_follow_up_effectiveness_groups_current_outcomes() -> None:

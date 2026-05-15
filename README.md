@@ -17,6 +17,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Track companies, roles, locations, application dates, links, contacts, notes, rejection reasons, and status.
 - Classify English, German, and Chinese recruiting emails as confirmation, recruiter reply, interview, assessment, rejection, follow-up, or other.
 - Extract company, role, location, contact, source link, deadlines, interview dates, and rejection reasons from pasted recruiting emails.
+- Recognize Germany-specific rejection patterns such as German-language requirements, visa/work authorization, location constraints, filled roles, and candidate-fit mismatches.
 - Draft Saved application records from pasted job descriptions or job URLs by extracting company, role, location, source link, contact, and deadline hints.
 - Suggest application status updates from email classification results.
 - Decide the recommended workflow action: update status, save a task, confirm a match, close a rejection, or create a new record.
@@ -28,7 +29,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Handle realistic recruiting-email edge cases such as forwarded messages, quoted replies, similar roles at the same company, mixed English/German text, multiple dates, and mismatch-based rejections.
 - Optionally sync recent recruiting emails from Gmail with local read-only OAuth.
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
-- Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails.
+- Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails in English, German, or Chinese.
 - Keep an activity log for application creation, updates, imports, email-assistant actions, and cleanup.
 - Apply versioned SQLite migrations through a lightweight `schema_version` table.
 - Tune category keywords, parser patterns, matching thresholds, and reminder timing through JSON configuration files.
@@ -38,7 +39,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Use bulk application actions to archive records, mark no response, or set follow-up dates from the Applications page.
 - View a contact-centric mini CRM layer for recruiters, hiring managers, referrals, last contact activity, follow-up status, channels, and linked applications.
 - Export interview, assessment, offer follow-up, and follow-up dates as `.ics` calendar files or a copyable calendar text block.
-- Analyze response rate by source, monthly application volume, role-type conversion, waiting days, stale pipeline risk, time-to-first-response, rejection reasons, follow-up outcomes, interview-to-offer funnel, and channel x role-type combinations.
+- Analyze response rate by source, including Germany-specific job sources, monthly application volume, role-type conversion, waiting days, stale pipeline risk, time-to-first-response, rejection reasons, follow-up outcomes, interview-to-offer funnel, and channel x role-type combinations.
 - Navigate through a simplified sidebar workspace layout: Overview, Applications, Contacts, Email Assistant, and Data & Settings.
 - Load demo applications to preview the dashboard immediately after setup.
 - Import and export applications with CSV, including common English and Chinese headers.

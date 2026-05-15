@@ -63,6 +63,27 @@ def test_extracts_rejection_reason_from_email_text() -> None:
     assert details["rejection_reason"] == "Position closed or filled."
 
 
+def test_extracts_germany_specific_rejection_taxonomy() -> None:
+    language_details = extract_application_details(
+        subject="Rueckmeldung zu Ihrer Bewerbung",
+        body=(
+            "Leider koennen wir Sie nicht beruecksichtigen, da fuer die Stelle C1 Deutschkenntnisse erforderlich sind."
+        ),
+    )
+    visa_details = extract_application_details(
+        subject="Absage",
+        body="Leider koennen wir keine Visa Sponsorship anbieten und benoetigen eine bestehende Arbeitserlaubnis.",
+    )
+    location_details = extract_application_details(
+        subject="Absage",
+        body="Die Position ist standortgebunden und erfordert Praesenz in Deutschland.",
+    )
+
+    assert language_details["rejection_reason"] == "Language requirement mismatch."
+    assert visa_details["rejection_reason"] == "Visa or work authorization mismatch."
+    assert location_details["rejection_reason"] == "Location requirement mismatch."
+
+
 def test_extracts_german_role_from_bewerbung_subject() -> None:
     details = extract_application_details(
         subject="Ihre Bewerbung als Werkstudent Konstruktion & Betriebsmittelmanagement (m/w/d)",

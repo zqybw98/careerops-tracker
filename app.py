@@ -51,7 +51,7 @@ from src.email_insights import (
     build_workflow_steps,
     confidence_gate,
 )
-from src.email_templates import TEMPLATE_TYPES, generate_email_template, suggest_template_type
+from src.email_templates import TEMPLATE_LANGUAGES, TEMPLATE_TYPES, generate_email_template, suggest_template_type
 from src.gmail_client import (
     DEFAULT_GMAIL_QUERY,
     GmailConfigurationError,
@@ -1393,12 +1393,17 @@ def render_email_templates(applications: list[dict]) -> None:
     suggested_type = suggest_template_type(selected)
     suggested_index = TEMPLATE_TYPES.index(suggested_type)
 
-    col_type, col_recipient, col_sender = st.columns(3)
+    col_type, col_language, col_recipient, col_sender = st.columns(4)
     template_type = col_type.selectbox(
         "Template type",
         TEMPLATE_TYPES,
         index=suggested_index,
         key=f"template_type_{selected_id}",
+    )
+    template_language = col_language.selectbox(
+        "Language",
+        TEMPLATE_LANGUAGES,
+        key=f"template_language_{selected_id}",
     )
     recipient_name = col_recipient.text_input(
         "Recipient name",
@@ -1412,14 +1417,16 @@ def render_email_templates(applications: list[dict]) -> None:
         template_type=template_type,
         recipient_name=recipient_name,
         sender_name=sender_name,
+        language=template_language,
     )
 
-    st.text_input("Subject", value=generated["subject"], key=f"template_subject_{selected_id}_{template_type}")
+    template_key = f"{selected_id}_{template_type}_{template_language}"
+    st.text_input("Subject", value=generated["subject"], key=f"template_subject_{template_key}")
     st.text_area(
         "Email body",
         value=generated["body"],
         height=320,
-        key=f"template_body_{selected_id}_{template_type}",
+        key=f"template_body_{template_key}",
     )
 
 

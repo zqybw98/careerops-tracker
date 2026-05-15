@@ -51,10 +51,10 @@ area to the modules that implement it.
 | Contact CRM | Derive recruiter, hiring-manager, referral, source-channel, follow-up, and linked-application views from existing application records and activity events. | `app.py`, `src/contacts.py`, `src/database.py` |
 | Import/export | Import English or Chinese CSV files, re-import updated files without duplicates, export records, load demo data, and clean older duplicate rows. | `src/csv_importer.py`, `src/demo_data.py`, `src/database.py` |
 | Calendar export | Export interview, assessment, offer follow-up, and follow-up dates as `.ics` files or copyable text blocks without calendar OAuth. | `src/calendar_export.py`, `app.py` |
-| Dashboard and editing | View pipeline metrics, status charts, pending actions, recent applications, decision analytics, funnel diagnostics, follow-up outcomes, and inline-edit key fields. | `src/dashboard.py`, `src/analytics.py`, `src/reminder_engine.py`, `app.py` |
+| Dashboard and editing | View pipeline metrics, status charts, pending actions, recent applications, decision analytics, Germany-specific source tagging, funnel diagnostics, follow-up outcomes, and inline-edit key fields. | `src/dashboard.py`, `src/analytics.py`, `src/reminder_engine.py`, `app.py` |
 | Job Post Intake | Extract company, role, location, source, contact, and deadline hints from job descriptions or job URLs, then create a draft Saved application record. | `src/job_post_parser.py`, `src/services/job_post_workflow.py`, `app.py` |
-| Email Assistant | Classify recruiting emails, extract application context, handle forwarded or mixed-language messages, rank top matches, apply confidence gates, save manual correction feedback, recommend next actions, and generate operation summaries. | `src/services/email_workflow.py`, `src/email_classifier.py`, `src/email_parser.py`, `src/email_feedback.py`, `src/email_insights.py`, `src/action_recommender.py` |
-| Templates | Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement drafts. | `src/email_templates.py`, `app.py` |
+| Email Assistant | Classify recruiting emails, extract application context, handle forwarded or mixed-language messages, recognize German rejection and work-authorization patterns, rank top matches, apply confidence gates, save manual correction feedback, recommend next actions, and generate operation summaries. | `src/services/email_workflow.py`, `src/email_classifier.py`, `src/email_parser.py`, `src/email_feedback.py`, `src/email_insights.py`, `src/action_recommender.py` |
+| Templates | Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement drafts in English, German, or Chinese. | `src/email_templates.py`, `app.py` |
 | Activity traceability | Record creates, updates, imports, email-assistant actions, dashboard edits, duplicate cleanup, and deletes. | `src/database.py` |
 | Configurable rules | Tune category keywords, parser patterns, matching thresholds, rejection reason patterns, and reminder timing without changing core logic. | `config/`, `src/config_loader.py` |
 | Optional Gmail sync | Read recent recruiting emails locally with OAuth, preview classifications, and apply only user-approved actions. | `src/gmail_client.py`, `src/services/email_workflow.py` |
@@ -193,6 +193,11 @@ as no interview, after HR screen, position closed, experience mismatch, or
 language/location mismatch. Changes to this field are recorded in the activity
 log like other application updates.
 
+The rejection reason taxonomy is tuned for Germany-oriented applications. It
+groups common rejection hints into categories such as filled roles, other
+candidates selected, experience mismatch, German-language requirement mismatch,
+visa/work-authorization mismatch, and location or relocation mismatch.
+
 ## Application Statuses
 
 Statuses are centralized in `src/models.py` to keep the UI, classifier, and
@@ -215,7 +220,9 @@ Closed statuses are `Rejected` and `Offer`; the reminder engine skips these.
 The classifier is rule-based rather than ML-based. This is deliberate for the
 MVP because recruiting email patterns are repetitive and explainability matters.
 It includes English, German, and Chinese recruiting phrases for the most common
-workflow categories.
+workflow categories. German rules include common expressions such as
+`Einladung zum Gespraech`, `Kennenlerngespraech`, `Arbeitsprobe`,
+`wir bedauern`, and `leider keine positive Rueckmeldung`.
 
 ## Configurable Rule Layer
 
@@ -303,6 +310,9 @@ existing application record. Template selection can be suggested from applicatio
 status, for example rejected applications default toward acknowledgement emails
 and interview records default toward thank-you emails. This keeps the workflow
 lightweight while connecting reminders, statuses, and recruiting communication.
+Drafts can be generated in English, German, or Chinese, which fits a
+Germany-based multilingual job search workflow without adding external AI
+dependencies.
 
 ## Reminder Rules
 
@@ -343,6 +353,11 @@ as which channels are responding, where the pipeline is stale, which role types
 are converting into interviews or assessments, and which follow-up or sourcing
 patterns deserve more attention.
 
+Source inference includes Germany-specific channels such as StepStone, Xing,
+Bundesagentur fuer Arbeit, Stellenwerk, Absolventa, Meinestadt, Honeypot, and
+common ATS platforms. This makes the dashboard more relevant to German student
+and early-career job searches.
+
 ## Import, Export, and Demo Data
 
 CSV import/export makes the tool portable and easy to review. The expected CSV
@@ -368,6 +383,7 @@ The project uses pytest for fast regression tests:
 - database tests verify application creation, updates, sync imports, duplicate cleanup, activity events, and email feedback persistence
 - email classifier tests verify core recruiting email categories
 - email workflow tests verify manual correction feedback overrides for similar future emails
+- multilingual tests verify German recruiting phrases, Germany-specific rejection taxonomy, and Chinese/German template generation
 - job-post intake tests verify JD field extraction, deadline parsing, URL-domain company fallback, and Saved payload generation
 - email template tests verify suggested template types and generated draft content
 - reminder tests verify follow-up, interview, assessment, and closed-status logic
