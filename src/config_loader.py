@@ -93,6 +93,30 @@ class ReminderConfig(TypedDict):
     rules: dict[str, ReminderRule]
 
 
+class JobPostExtractionPatternConfig(TypedDict):
+    company: list[str]
+    role: list[str]
+    location: list[str]
+
+
+class JobPostNextActionConfig(TypedDict):
+    with_deadline: str
+    with_source: str
+    default: str
+
+
+class JobPostConfig(TypedDict):
+    default_status: str
+    job_board_domains: list[str]
+    common_locations: list[str]
+    role_keywords: list[str]
+    role_stop_lines: list[str]
+    extraction_patterns: JobPostExtractionPatternConfig
+    deadline_keywords: list[str]
+    month_lookup: dict[str, int]
+    next_actions: JobPostNextActionConfig
+
+
 @lru_cache
 def _load_json_config(filename: str) -> dict[str, Any]:
     config_path = CONFIG_DIR / filename
@@ -110,3 +134,7 @@ def get_email_parser_config() -> EmailParserConfig:
 
 def get_reminder_config() -> ReminderConfig:
     return cast(ReminderConfig, _load_json_config("reminder_rules.json"))
+
+
+def get_job_post_config() -> JobPostConfig:
+    return cast(JobPostConfig, _load_json_config("job_post_rules.json"))

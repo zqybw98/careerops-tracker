@@ -20,6 +20,7 @@ matching section, GitHub generates release notes automatically.
 - Realistic email edge-case coverage for forwarded messages, quoted replies, similar same-company roles, multiple dates, mismatch-based rejections, domain-only recruiter hints, and long mixed-language messages.
 - Contact-centric mini CRM workspace for recruiter, hiring-manager, referral, channel, last-activity, follow-up, and linked-application views.
 - Calendar export for interview, assessment, offer follow-up, and follow-up dates as `.ics` files and copyable text blocks.
+- Job Post Intake workflow that extracts draft application records from pasted JDs or job URLs and creates Saved applications after user confirmation.
 
 ### Changed
 

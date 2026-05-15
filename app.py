@@ -71,6 +71,7 @@ from src.services.email_workflow import (
     get_email_category_options,
     record_email_feedback,
 )
+from src.services.job_post_workflow import build_job_post_application_draft
 
 DASHBOARD_EDITOR_COLUMNS = [
     "#",
@@ -185,7 +186,11 @@ def render_app_header(workspace: str) -> None:
 
 
 def render_assistant_workspace(applications: list[dict]) -> None:
-    email_tab, templates_tab, gmail_tab = st.tabs(["Email Classification", "Templates", "Gmail Sync"])
+    job_post_tab, email_tab, templates_tab, gmail_tab = st.tabs(
+        ["Job Post Intake", "Email Classification", "Templates", "Gmail Sync"]
+    )
+    with job_post_tab:
+        render_job_post_intake()
     with email_tab:
         render_email_assistant(applications)
     with templates_tab:
@@ -868,6 +873,131 @@ def render_applications(applications: list[dict]) -> None:
 
     st.subheader("Activity Log")
     render_activity_log(selected_id)
+
+
+def render_job_post_intake() -> None:
+    st.subheader("Draft Application from Job Post")
+    source_url = st.text_input("Job URL", key="job_post_url_input")
+    job_post_text = st.text_area(
+        "Job description / JD",
+        height=260,
+        placeholder="Paste the job title, company, location, requirements, deadline, or full JD text here.",
+        key="job_post_text_input",
+    )
+
+    if st.button("Analyze job post", key="analyze_job_post"):
+        st.session_state.pop("job_post_create_success_message", None)
+        if not source_url.strip() and not job_post_text.strip():
+            st.warning("Paste a job URL or JD text before analyzing.")
+        else:
+            st.session_state["last_job_post_draft"] = build_job_post_application_draft(
+                job_text=job_post_text,
+                source_url=source_url,
+            )
+            st.session_state["job_post_draft_version"] = int(st.session_state.get("job_post_draft_version", 0)) + 1
+
+    success_message = st.session_state.get("job_post_create_success_message")
+    if success_message:
+        st.success(success_message)
+
+    draft = st.session_state.get("last_job_post_draft")
+    if not draft:
+        st.info("Paste a JD or job URL to extract a draft Saved application record.")
+        return
+
+    analysis = draft["analysis"]
+    payload = draft["payload"]
+    details = analysis["details"]
+
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Company", details.get("company") or "-")
+    metric_cols[1].metric("Role", details.get("role") or "-")
+    metric_cols[2].metric("Location", details.get("location") or "-")
+    metric_cols[3].metric("Confidence", analysis["confidence_label"])
+    metric_cols[4].metric("Deadline", details.get("deadline") or "-")
+    st.info(analysis["summary"])
+    st.dataframe(pd.DataFrame(analysis["field_rows"]), use_container_width=True, hide_index=True, height=245)
+
+    if analysis["missing_fields"]:
+        st.warning("Required fields still need review: " + ", ".join(analysis["missing_fields"]))
+
+    st.subheader("Create Saved Application")
+    version = int(st.session_state.get("job_post_draft_version", 0))
+    with st.form("create_from_job_post_form", clear_on_submit=False):
+        col_company, col_role, col_location = st.columns(3)
+        company = col_company.text_input(
+            "Company",
+            value=payload.get("company", ""),
+            key=f"job_post_company_{version}",
+        )
+        role = col_role.text_input("Role", value=payload.get("role", ""), key=f"job_post_role_{version}")
+        location = col_location.text_input(
+            "Location",
+            value=payload.get("location", ""),
+            key=f"job_post_location_{version}",
+        )
+
+        col_date, col_status, col_follow_up = st.columns(3)
+        saved_date = col_date.date_input(
+            "Saved date",
+            value=_text_to_date(payload.get("application_date")) or date.today(),
+            key=f"job_post_date_{version}",
+        )
+        status = col_status.selectbox(
+            "Status",
+            STATUS_OPTIONS,
+            index=_option_index(STATUS_OPTIONS, payload.get("status", "Saved")),
+            key=f"job_post_status_{version}",
+        )
+        suggested_follow_up = _text_to_date(payload.get("follow_up_date"))
+        follow_up_value = col_follow_up.date_input(
+            "Deadline / follow-up date",
+            value=suggested_follow_up or date.today() + timedelta(days=7),
+            key=f"job_post_follow_up_{version}",
+        )
+        keep_follow_up = col_follow_up.checkbox(
+            "Keep date",
+            value=bool(suggested_follow_up),
+            key=f"job_post_keep_follow_up_{version}",
+        )
+
+        source_link = st.text_input(
+            "Source link",
+            value=payload.get("source_link", ""),
+            key=f"job_post_source_{version}",
+        )
+        contact = st.text_input("Contact", value=payload.get("contact", ""), key=f"job_post_contact_{version}")
+        next_action = st.text_input(
+            "Next action",
+            value=payload.get("next_action", ""),
+            key=f"job_post_next_action_{version}",
+        )
+        notes = st.text_area("Notes", value=payload.get("notes", ""), key=f"job_post_notes_{version}")
+
+        if st.form_submit_button("Create saved application"):
+            if not company.strip() or not role.strip():
+                st.error("Company and role are required to create a saved application.")
+            else:
+                create_application(
+                    {
+                        "company": company,
+                        "role": role,
+                        "location": location,
+                        "application_date": saved_date.isoformat(),
+                        "status": status,
+                        "source_link": source_link,
+                        "contact": contact,
+                        "notes": notes,
+                        "rejection_reason": "",
+                        "next_action": next_action,
+                        "follow_up_date": follow_up_value.isoformat() if keep_follow_up else "",
+                    },
+                    source="job_post_intake",
+                )
+                st.session_state["job_post_create_success_message"] = (
+                    f"Saved application created from JD: {company.strip()} / {role.strip()}."
+                )
+                st.rerun()
 
 
 def render_email_assistant(applications: list[dict]) -> None:

@@ -9,6 +9,7 @@ rules for automation, and pytest for regression coverage.
 
 - Keep the tool easy to run locally with no external service dependency.
 - Structure application data so the job search pipeline can be reviewed quickly.
+- Convert job descriptions and job URLs into draft saved application records.
 - Convert unstructured recruiting emails into actionable status updates.
 - Make automation decisions explainable through matched keywords and rule output.
 - Keep Gmail API integration optional so the core project remains lightweight.
@@ -34,9 +35,10 @@ flowchart LR
 2. The user adds or imports application records in the Streamlit interface.
 3. The app stores records in a local SQLite database under `data/`.
 4. The dashboard reads application records and builds pipeline metrics.
-5. The assistant classifies pasted or optionally synced Gmail recruiting emails with transparent rules.
-6. Suggested email outcomes can update an existing application.
-7. The reminder engine turns dates and statuses into pending actions.
+5. The assistant can draft saved records from pasted job posts or job URLs.
+6. The assistant classifies pasted or optionally synced Gmail recruiting emails with transparent rules.
+7. Suggested email outcomes can update an existing application.
+8. The reminder engine turns dates and statuses into pending actions.
 
 ## Feature Coverage
 
@@ -50,6 +52,7 @@ area to the modules that implement it.
 | Import/export | Import English or Chinese CSV files, re-import updated files without duplicates, export records, load demo data, and clean older duplicate rows. | `src/csv_importer.py`, `src/demo_data.py`, `src/database.py` |
 | Calendar export | Export interview, assessment, offer follow-up, and follow-up dates as `.ics` files or copyable text blocks without calendar OAuth. | `src/calendar_export.py`, `app.py` |
 | Dashboard and editing | View pipeline metrics, status charts, pending actions, recent applications, decision analytics, funnel diagnostics, follow-up outcomes, and inline-edit key fields. | `src/dashboard.py`, `src/analytics.py`, `src/reminder_engine.py`, `app.py` |
+| Job Post Intake | Extract company, role, location, source, contact, and deadline hints from job descriptions or job URLs, then create a draft Saved application record. | `src/job_post_parser.py`, `src/services/job_post_workflow.py`, `app.py` |
 | Email Assistant | Classify recruiting emails, extract application context, handle forwarded or mixed-language messages, rank top matches, apply confidence gates, save manual correction feedback, recommend next actions, and generate operation summaries. | `src/services/email_workflow.py`, `src/email_classifier.py`, `src/email_parser.py`, `src/email_feedback.py`, `src/email_insights.py`, `src/action_recommender.py` |
 | Templates | Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement drafts. | `src/email_templates.py`, `app.py` |
 | Activity traceability | Record creates, updates, imports, email-assistant actions, dashboard edits, duplicate cleanup, and deletes. | `src/database.py` |
@@ -62,7 +65,7 @@ area to the modules that implement it.
 | Component | Responsibility |
 | --- | --- |
 | `app.py` | Streamlit UI, tab routing, forms, import/export, and user interactions. Business workflows are delegated to services. |
-| `config/` | JSON rule configuration for email classification, email parsing, matching thresholds, and reminder behavior. |
+| `config/` | JSON rule configuration for email classification, email parsing, job-post intake, matching thresholds, and reminder behavior. |
 | `migrations/` | Ordered SQLite schema migrations applied at startup and tracked in `schema_version`. |
 | `src/action_recommender.py` | Converts classified emails and extracted context into workflow decisions, prioritized next actions, follow-up dates, rationales, and suggested template types. |
 | `src/analytics.py` | Builds decision-oriented metrics such as response rates, conversion, waiting days, monthly volume, stale pipeline breakdowns, response timing, rejection reasons, follow-up outcomes, funnels, and channel-role cross analysis. |
@@ -80,10 +83,12 @@ area to the modules that implement it.
 | `src/email_insights.py` | Converts classification, extracted context, and ranked matches into explainable Email Assistant report rows. |
 | `src/email_templates.py` | Generates rule-based follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails. |
 | `src/gmail_client.py` | Optional local Gmail API client that fetches read-only recruiting emails for preview classification. |
+| `src/job_post_parser.py` | Extracts draft application fields from pasted job descriptions and source URLs. |
 | `src/reminder_engine.py` | Generates follow-up, interview, assessment, stale-application, and saved-role reminders. |
 | `src/services/email_workflow.py` | Orchestrates email classification, extracted context, application matching, workflow recommendations, note generation, and Gmail preview application. |
+| `src/services/job_post_workflow.py` | Converts job-post extraction results into Saved application payloads and traceable notes. |
 | `src/demo_data.py` | Loads portfolio-friendly sample data from `samples/sample_applications.csv` without duplicates. |
-| `tests/` | Regression tests for database persistence, config loading, CSV import, email rules, workflow services, analytics, reminders, Gmail preview behavior, and demo data loading. |
+| `tests/` | Regression tests for database persistence, config loading, CSV import, email rules, job-post intake, workflow services, analytics, reminders, Gmail preview behavior, and demo data loading. |
 | `pyproject.toml` | Central configuration for Ruff linting, Ruff formatting, and mypy type checking. |
 | `.pre-commit-config.yaml` | Local hooks for lint auto-fix, formatting, and type checks before commits. |
 | `.streamlit/config.toml` | Streamlit theme configuration used locally and in the hosted demo. |
@@ -221,14 +226,22 @@ Rules that are likely to change during job-search usage live in JSON files under
 | --- | --- |
 | `config/email_classification_rules.json` | Email categories, multilingual keywords, suggested statuses, suggested next actions, follow-up intervals, default fallback behavior, and confidence scoring parameters. |
 | `config/email_parser_rules.json` | Application matching thresholds, generic email domains, role stop words, common locations, date-context keywords, extraction regex patterns, email intent keywords, and rejection-reason patterns. |
+| `config/job_post_rules.json` | Job-post extraction patterns, job-board domains, common locations, role keywords, deadline keywords, and Saved-record next-action templates. |
 | `config/reminder_rules.json` | Reminder priorities, messages, reasons, waiting-day thresholds, status scopes, and default assessment due-date behavior. |
 
 `src/config_loader.py` exposes typed helper functions so the rest of the code can
-ask for classification, parser, or reminder configuration without depending on
+ask for classification, parser, job-post, or reminder configuration without depending on
 file paths or JSON parsing. This keeps the MVP deterministic and testable while
 making future tuning cheaper: adding a new German rejection phrase, changing a
 follow-up interval, or tightening the auto-match threshold no longer requires
 editing classifier or parser logic.
+
+The Job Post Intake tab uses the same approach for pre-application workflow.
+`src/job_post_parser.py` extracts draft fields from pasted JD text or source
+URLs, assigns the `Saved` status, carries application deadlines into
+`follow_up_date`, and generates a review-oriented next action. The workflow
+service then builds a create-ready payload while keeping the form editable so
+the user confirms extracted fields before saving anything.
 
 Each rule contains:
 
@@ -355,6 +368,7 @@ The project uses pytest for fast regression tests:
 - database tests verify application creation, updates, sync imports, duplicate cleanup, activity events, and email feedback persistence
 - email classifier tests verify core recruiting email categories
 - email workflow tests verify manual correction feedback overrides for similar future emails
+- job-post intake tests verify JD field extraction, deadline parsing, URL-domain company fallback, and Saved payload generation
 - email template tests verify suggested template types and generated draft content
 - reminder tests verify follow-up, interview, assessment, and closed-status logic
 - demo data tests verify sample CSV loading and idempotent import behavior

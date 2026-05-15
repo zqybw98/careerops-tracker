@@ -17,6 +17,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Track companies, roles, locations, application dates, links, contacts, notes, rejection reasons, and status.
 - Classify English, German, and Chinese recruiting emails as confirmation, recruiter reply, interview, assessment, rejection, follow-up, or other.
 - Extract company, role, location, contact, source link, deadlines, interview dates, and rejection reasons from pasted recruiting emails.
+- Draft Saved application records from pasted job descriptions or job URLs by extracting company, role, location, source link, contact, and deadline hints.
 - Suggest application status updates from email classification results.
 - Decide the recommended workflow action: update status, save a task, confirm a match, close a rejection, or create a new record.
 - Generate an operation summary that explains the classification, target record, match confidence, status action, and next step.
@@ -89,6 +90,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |-- config/
 |   |-- email_classification_rules.json
 |   |-- email_parser_rules.json
+|   |-- job_post_rules.json
 |   `-- reminder_rules.json
 |-- migrations/
 |   |-- 001_init.sql
@@ -118,11 +120,13 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- email_parser.py
 |   |-- email_templates.py
 |   |-- gmail_client.py
+|   |-- job_post_parser.py
 |   |-- models.py
 |   |-- reminder_engine.py
 |   `-- services/
 |       |-- __init__.py
-|       `-- email_workflow.py
+|       |-- email_workflow.py
+|       `-- job_post_workflow.py
 |-- tests/
 |   |-- test_action_recommender.py
 |   |-- test_analytics.py
@@ -134,11 +138,14 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- test_database.py
 |   |-- test_demo_data.py
 |   |-- test_email_classifier.py
+|   |-- test_email_edge_cases.py
 |   |-- test_email_insights.py
 |   |-- test_email_parser.py
 |   |-- test_email_templates.py
 |   |-- test_email_workflow_service.py
 |   |-- test_gmail_client.py
+|   |-- test_job_post_parser.py
+|   |-- test_job_post_workflow.py
 |   `-- test_reminder_engine.py
 |-- samples/
 |   |-- sample_applications.csv
