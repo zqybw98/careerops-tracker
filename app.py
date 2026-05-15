@@ -187,7 +187,7 @@ def render_app_header(workspace: str) -> None:
 
 def render_assistant_workspace(applications: list[dict]) -> None:
     job_post_tab, email_tab, templates_tab, gmail_tab = st.tabs(
-        ["Job Post Intake", "Email Classification", "Templates", "Gmail Sync"]
+        ["Job Post Intake", "Classify Email", "Templates", "Gmail Sync"]
     )
     with job_post_tab:
         render_job_post_intake()
@@ -1001,11 +1001,16 @@ def render_job_post_intake() -> None:
 
 
 def render_email_assistant(applications: list[dict]) -> None:
-    st.subheader("Classify Recruiting Email")
-    subject = st.text_input("Email subject", key="email_subject_input")
-    body = st.text_area("Email body", height=220, key="email_body_input")
+    st.subheader("Classify Email")
+    st.caption("Paste a recruiting email to classify it, match it to an application, and choose the next action.")
+    with st.container(border=True):
+        subject = st.text_input("Email subject", key="email_subject_input")
+        body = st.text_area("Email body", height=180, key="email_body_input")
+        action_col, helper_col = st.columns([1, 4])
+        classify_clicked = action_col.button("Analyze email", type="primary")
+        helper_col.caption("Supports English, German, and Chinese recruiting emails.")
 
-    if st.button("Classify email"):
+    if classify_clicked:
         st.session_state.pop("email_create_success_message", None)
         workflow = classify_email_for_workflow(subject=subject, body=body, applications=applications, use_feedback=True)
         st.session_state["last_email_subject"] = subject
@@ -1018,7 +1023,7 @@ def render_email_assistant(applications: list[dict]) -> None:
 
     result = st.session_state.get("last_classification")
     if not result:
-        st.info("Paste an email and classify it to get a suggested status update.")
+        st.info("Paste an email above and click Analyze email to get a recommended next step.")
         return
 
     details = st.session_state.get("last_email_details", {})
@@ -1051,7 +1056,7 @@ def render_email_assistant(applications: list[dict]) -> None:
 
     if applications:
         st.divider()
-        st.subheader("Recommended Workflow")
+        st.subheader("Apply Recommendation")
         label_id_map = _application_label_id_map(applications)
         labels = list(label_id_map.keys())
         default_match = match or (match_candidates[0] if match_candidates else None)
@@ -1077,51 +1082,19 @@ def render_email_assistant(applications: list[dict]) -> None:
         workflow_decision = workflow_context["workflow_decision"]
         operation_summary = workflow_context["operation_summary"]
 
-        decision_cols = st.columns(5)
-        decision_cols[0].metric("Decision", workflow_decision["operation"])
-        decision_cols[1].metric("Review level", workflow_decision["review_level"])
-        decision_cols[2].metric("Priority", recommendation["priority"])
-        decision_cols[3].metric("Follow-up", recommendation["follow_up_date"] or "-")
-        decision_cols[4].metric("Target", f"{selected.get('company', '')}")
+        decision_cols = st.columns(4)
+        _render_compact_card(decision_cols[0], "Decision", workflow_decision["operation"])
+        _render_compact_card(decision_cols[1], "Review level", workflow_decision["review_level"])
+        _render_compact_card(decision_cols[2], "Follow-up", recommendation["follow_up_date"] or "-")
+        _render_compact_card(decision_cols[3], "Target", selected.get("company", "-"))
         st.info(workflow_decision["decision"])
-        st.write("Record action:", workflow_decision["record_action"])
-        st.write("Status action:", workflow_decision["status_action"])
-        st.caption("Why: " + workflow_decision["rationale"])
         if not workflow_decision["status_update_allowed"]:
             st.warning("Status update is disabled because the email is below the confidence threshold.")
-        with st.container(border=True):
-            st.markdown("**Operation Summary**")
-            st.write(operation_summary["summary"])
-            st.caption(operation_summary["audit_note"])
-        st.dataframe(
-            pd.DataFrame(
-                build_workflow_steps(
-                    result,
-                    recommendation,
-                    has_match=bool(match),
-                    workflow_decision=workflow_decision,
-                )
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
 
-        next_action_col, status_col = st.columns(2)
-        if next_action_col.button(workflow_decision["secondary_action_label"], type="primary"):
-            apply_email_workflow_update(
-                selected_id,
-                selected,
-                result,
-                details,
-                recommendation,
-                apply_status=False,
-                operation_summary=operation_summary,
-            )
-            st.success("Next action applied to the selected application.")
-            st.rerun()
-
+        status_col, next_action_col = st.columns(2)
         if status_col.button(
             workflow_decision["primary_action_label"],
+            type="primary",
             disabled=not workflow_decision["status_update_allowed"],
         ):
             apply_email_workflow_update(
@@ -1136,16 +1109,56 @@ def render_email_assistant(applications: list[dict]) -> None:
             st.success("Application updated from email classification.")
             st.rerun()
 
+        if next_action_col.button(workflow_decision["secondary_action_label"]):
+            apply_email_workflow_update(
+                selected_id,
+                selected,
+                result,
+                details,
+                recommendation,
+                apply_status=False,
+                operation_summary=operation_summary,
+            )
+            st.success("Next action applied to the selected application.")
+            st.rerun()
+
+        with st.expander("Review workflow details"):
+            st.write("Record action:", workflow_decision["record_action"])
+            st.write("Status action:", workflow_decision["status_action"])
+            st.caption("Why: " + workflow_decision["rationale"])
+            st.markdown("**Operation Summary**")
+            st.write(operation_summary["summary"])
+            st.caption(operation_summary["audit_note"])
+            st.dataframe(
+                pd.DataFrame(
+                    build_workflow_steps(
+                        result,
+                        recommendation,
+                        has_match=bool(match),
+                        workflow_decision=workflow_decision,
+                    )
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
     st.divider()
-    st.subheader("Create Application from Email")
     success_message = st.session_state.get("email_create_success_message")
     if success_message:
         st.success(success_message)
-    with st.form("create_from_email_form", clear_on_submit=True):
+    create_expanded = not applications or not (match or match_candidates)
+    with (
+        st.expander("Create a new application from this email", expanded=create_expanded),
+        st.form("create_from_email_form", clear_on_submit=True),
+    ):
         col_company, col_role, col_location = st.columns(3)
         company = col_company.text_input("Company", value=details.get("company", ""), key="email_create_company")
         role = col_role.text_input("Role", value=details.get("role", ""), key="email_create_role")
-        location = col_location.text_input("Location", value=details.get("location", ""), key="email_create_location")
+        location = col_location.text_input(
+            "Location",
+            value=details.get("location", ""),
+            key="email_create_location",
+        )
 
         col_date, col_status, col_follow_up = st.columns(3)
         application_date = col_date.date_input("Application date", value=date.today(), key="email_create_date")
@@ -1286,6 +1299,21 @@ def render_email_feedback_controls(
             st.rerun()
 
 
+def _compact_display(value: object, limit: int = 46) -> str:
+    text = str(value or "-").strip() or "-"
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
+
+
+def _render_compact_card(column: object, label: str, value: object, detail: str = "") -> None:
+    with column.container(border=True):
+        st.caption(label)
+        st.markdown(f"**{_compact_display(value)}**")
+        if detail:
+            st.caption(detail)
+
+
 def render_email_analysis_report(
     result: dict,
     details: dict[str, str],
@@ -1297,86 +1325,97 @@ def render_email_analysis_report(
     summary = build_email_analysis_summary(result, details, match, candidate_count=len(match_candidates))
     classification_confidence = float(result.get("confidence") or 0)
     gate = confidence_gate(classification_confidence)
-
-    st.subheader("Email Analysis")
-    with st.container(border=True):
-        summary_cols = st.columns(5)
-        summary_cols[0].metric("Email type", result["category"])
-        summary_cols[1].metric("Confidence", summary["confidence_label"], f"{classification_confidence:.0%}")
-        summary_cols[2].metric("Gate", gate["gate"])
-        summary_cols[3].metric("Suggested status", result["suggested_status"])
-        summary_cols[4].metric("Context fields", summary["detected_context"])
-        st.caption(summary["confidence_description"])
-        st.caption(f"Threshold rule: {gate['threshold']} - {gate['allowed_action']}.")
-        st.info(summary["decision"])
-        with st.expander("Confidence threshold rules"):
-            st.dataframe(
-                pd.DataFrame(build_confidence_threshold_rows()),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-    evidence_col, context_col = st.columns([1, 1])
-    with evidence_col:
-        st.markdown("**Classification Evidence**")
-        st.write("Suggested next action:", result["suggested_next_action"])
-        keyword_rows = build_keyword_rows(result)
-        if keyword_rows:
-            st.dataframe(pd.DataFrame(keyword_rows), use_container_width=True, hide_index=True, height=160)
-        else:
-            st.caption("No specific recruiting keywords were matched.")
-
-    with context_col:
-        st.markdown("**Extracted Application Context**")
-        st.dataframe(
-            pd.DataFrame(build_context_rows(details)),
-            use_container_width=True,
-            hide_index=True,
-            height=260,
-        )
-        if details.get("source_link"):
-            st.write("Source link:", details["source_link"])
-
-    st.markdown("**Application Match**")
     visible_match = match or (match_candidates[0] if match_candidates else None)
+    best_match_label = (
+        f"{visible_match['company']} / {visible_match['role']}"
+        if visible_match
+        else ("Manual selection needed" if has_applications else "Create a new record")
+    )
+
+    st.subheader("Recommendation")
+    summary_cols = st.columns(5)
+    _render_compact_card(summary_cols[0], "Email type", result["category"])
+    _render_compact_card(summary_cols[1], "Confidence", summary["confidence_label"], f"{classification_confidence:.0%}")
+    _render_compact_card(summary_cols[2], "Gate", gate["gate"])
+    _render_compact_card(summary_cols[3], "Suggested status", result["suggested_status"])
+    _render_compact_card(summary_cols[4], "Best match", best_match_label)
+    st.info(summary["decision"])
+    st.caption(f"{summary['confidence_description']} Threshold: {gate['threshold']} - {gate['allowed_action']}.")
+
     if match_candidates:
         if match:
             st.success(f"Best match: {match['company']} / {match['role']}")
         else:
             st.warning("No auto-selected confident match. Review the ranked candidates before applying changes.")
-        st.markdown("**Top 3 Existing Application Matches**")
-        st.caption(f"Showing {len(match_candidates)} candidate(s), ranked by score and confidence.")
-        st.dataframe(
-            pd.DataFrame(build_match_candidate_rows(match_candidates, selected_match=match)),
-            use_container_width=True,
-            hide_index=True,
-            height=170,
-        )
-
-    if visible_match:
-        match_confidence = float(visible_match.get("confidence") or 0)
-        match_cols = st.columns(4)
-        match_cols[0].metric("Match status", summary["match_label"])
-        match_cols[1].metric("Match confidence", f"{match_confidence:.0%}")
-        match_cols[2].metric("Match score", visible_match["score"])
-        match_cols[3].metric("Workflow priority", recommendation["priority"])
-
-        reason_col, signal_col = st.columns([2, 1])
-        with reason_col:
-            reason_rows = build_match_reason_rows(visible_match)
-            if reason_rows:
-                st.dataframe(pd.DataFrame(reason_rows), use_container_width=True, hide_index=True, height=180)
-        with signal_col:
-            st.dataframe(
-                pd.DataFrame(build_match_signal_rows(visible_match)),
-                use_container_width=True,
-                hide_index=True,
-                height=180,
-            )
     elif has_applications:
         st.warning("No confident application match found. Select one manually below or create a new record.")
     else:
         st.info("No existing applications are available yet. Use the extracted context to create a new record.")
+
+    with st.expander("Review extracted context and classification evidence"):
+        evidence_col, context_col = st.columns([1, 1])
+        with evidence_col:
+            st.markdown("**Classification Evidence**")
+            st.write("Suggested next action:", result["suggested_next_action"])
+            keyword_rows = build_keyword_rows(result)
+            if keyword_rows:
+                st.dataframe(pd.DataFrame(keyword_rows), use_container_width=True, hide_index=True, height=160)
+            else:
+                st.caption("No specific recruiting keywords were matched.")
+
+        with context_col:
+            st.markdown("**Extracted Application Context**")
+            st.dataframe(
+                pd.DataFrame(build_context_rows(details)),
+                use_container_width=True,
+                hide_index=True,
+                height=260,
+            )
+            if details.get("source_link"):
+                st.write("Source link:", details["source_link"])
+
+    with st.expander("Review application match details"):
+        if match_candidates:
+            st.markdown("**Top 3 Existing Application Matches**")
+            st.caption(f"Showing {len(match_candidates)} candidate(s), ranked by score and confidence.")
+            st.dataframe(
+                pd.DataFrame(build_match_candidate_rows(match_candidates, selected_match=match)),
+                use_container_width=True,
+                hide_index=True,
+                height=170,
+            )
+        elif has_applications:
+            st.caption("No candidates were strong enough to rank for this email.")
+        else:
+            st.caption("Add or import applications to enable existing-record matching.")
+
+        if visible_match:
+            match_confidence = float(visible_match.get("confidence") or 0)
+            match_cols = st.columns(4)
+            _render_compact_card(match_cols[0], "Match status", summary["match_label"])
+            _render_compact_card(match_cols[1], "Match confidence", f"{match_confidence:.0%}")
+            _render_compact_card(match_cols[2], "Match score", visible_match["score"])
+            _render_compact_card(match_cols[3], "Workflow priority", recommendation["priority"])
+
+            reason_col, signal_col = st.columns([2, 1])
+            with reason_col:
+                reason_rows = build_match_reason_rows(visible_match)
+                if reason_rows:
+                    st.dataframe(pd.DataFrame(reason_rows), use_container_width=True, hide_index=True, height=180)
+            with signal_col:
+                st.dataframe(
+                    pd.DataFrame(build_match_signal_rows(visible_match)),
+                    use_container_width=True,
+                    hide_index=True,
+                    height=180,
+                )
+
+    with st.expander("Confidence threshold rules"):
+        st.dataframe(
+            pd.DataFrame(build_confidence_threshold_rows()),
+            use_container_width=True,
+            hide_index=True,
+        )
 
 
 def render_email_templates(applications: list[dict]) -> None:
