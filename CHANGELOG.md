@@ -8,6 +8,10 @@ matching section, GitHub generates release notes automatically.
 
 ## [Unreleased]
 
+No unreleased changes.
+
+## [v0.2.0] - 2026-05-16
+
 ### Added
 
 - Configurable automation rules for email categories, parser patterns, match thresholds, and reminders.
