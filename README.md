@@ -271,7 +271,9 @@ hard-coded in Python modules:
 
 This makes future tuning easier: a new German rejection phrase, a stricter match
 threshold, or a different follow-up interval can be changed in configuration and
-covered by tests without rewriting the classifier logic.
+covered by tests without rewriting the classifier logic. Email classification
+configuration is validated at startup, so missing required fields, empty keyword
+lists, and invalid confidence values fail early with clear errors.
 
 ## Email Categories
 

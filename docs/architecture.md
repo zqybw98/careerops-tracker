@@ -56,7 +56,7 @@ area to the modules that implement it.
 | Email Assistant | Classify recruiting emails, extract application context, handle forwarded or mixed-language messages, recognize German rejection and work-authorization patterns, rank top matches, apply confidence gates, save manual correction feedback, recommend next actions, and generate operation summaries. | `src/ui/email_assistant_page.py`, `src/services/email_workflow.py`, `src/email_classifier.py`, `src/email_parser.py`, `src/email_feedback.py`, `src/email_insights.py`, `src/action_recommender.py` |
 | Templates | Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement drafts in English, German, or Chinese. | `src/ui/email_assistant_page.py`, `src/email_templates.py` |
 | Activity traceability | Record creates, updates, imports, email-assistant actions, dashboard edits, duplicate cleanup, and deletes. | `src/database.py` |
-| Configurable rules | Tune category keywords, parser patterns, matching thresholds, rejection reason patterns, and reminder timing without changing core logic. | `config/`, `src/config_loader.py` |
+| Configurable rules | Tune category keywords, parser patterns, matching thresholds, rejection reason patterns, and reminder timing without changing core logic; classification config is validated at load time. | `config/`, `src/config_loader.py` |
 | Optional Gmail sync | Read recent recruiting emails locally with OAuth, preview classifications, and apply only user-approved actions. | `src/ui/email_assistant_page.py`, `src/gmail_client.py`, `src/services/email_workflow.py` |
 | Engineering quality | Run versioned SQLite migrations, linting, formatting, type checks, pytest, pre-commit hooks, CI, and tag-based releases. | `migrations/`, `pyproject.toml`, `.pre-commit-config.yaml`, `.github/workflows/tests.yml`, `.github/workflows/release.yml`, `CHANGELOG.md`, `tests/` |
 
@@ -72,7 +72,7 @@ area to the modules that implement it.
 | `src/application_filters.py` | Applies Applications-page search filters, date-range filtering, stale-only filtering, and bulk action payload rules. |
 | `src/calendar_export.py` | Builds all-day `.ics` events and readable calendar text blocks from dated application actions. |
 | `src/contacts.py` | Builds a contact-centric mini CRM view from application contacts, source links, follow-up dates, and activity events. |
-| `src/config_loader.py` | Loads typed JSON configuration for rule-based modules with a small cached API. |
+| `src/config_loader.py` | Loads typed JSON configuration for rule-based modules with a small cached API and runtime validation for email classification rules. |
 | `src/database.py` | SQLite connection management, migration execution, CRUD, CSV sync imports, duplicate cleanup, and activity logging. |
 | `src/csv_importer.py` | Normalizes English and Chinese CSV headers, dates, and statuses before import. |
 | `src/models.py` | Shared status options, application columns, and classification result shape. |
@@ -240,10 +240,12 @@ Rules that are likely to change during job-search usage live in JSON files under
 
 `src/config_loader.py` exposes typed helper functions so the rest of the code can
 ask for classification, parser, job-post, or reminder configuration without depending on
-file paths or JSON parsing. This keeps the MVP deterministic and testable while
-making future tuning cheaper: adding a new German rejection phrase, changing a
-follow-up interval, or tightening the auto-match threshold no longer requires
-editing classifier or parser logic.
+file paths or JSON parsing. Email classification rules are also checked at load
+time for required fields, keyword lists, integer priorities, optional follow-up
+intervals, and confidence values between 0 and 1. This keeps the MVP deterministic
+and testable while making future tuning cheaper: adding a new German rejection
+phrase, changing a follow-up interval, or tightening the auto-match threshold no
+longer requires editing classifier or parser logic.
 
 The Job Post Intake tab uses the same approach for pre-application workflow.
 `src/job_post_parser.py` extracts draft fields from pasted JD text or source
