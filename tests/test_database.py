@@ -118,7 +118,7 @@ def test_init_db_migrates_rejection_reason_column(tmp_path: Path) -> None:
         versions = [row[0] for row in connection.execute("SELECT version FROM schema_version ORDER BY version")]
 
     assert "rejection_reason" in columns
-    assert versions == [1, 2, 3]
+    assert versions == [1, 2, 3, 4]
 
 
 def test_init_db_records_versioned_migrations(tmp_path: Path) -> None:
@@ -148,7 +148,25 @@ def test_init_db_records_versioned_migrations(tmp_path: Path) -> None:
 
     assert {"applications", "application_events", "email_feedback", "schema_version"} <= tables
     assert "rejection_reason" in application_columns
-    assert versions == [(1, "001_init"), (2, "002_add_rejection_reason"), (3, "003_add_email_feedback")]
+    assert versions == [
+        (1, "001_init"),
+        (2, "002_add_rejection_reason"),
+        (3, "003_add_email_feedback"),
+        (4, "004_add_lookup_indexes"),
+    ]
+
+
+def test_init_db_creates_lookup_indexes(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+
+    init_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        event_indexes = {row[1] for row in connection.execute("PRAGMA index_list(application_events)").fetchall()}
+        feedback_indexes = {row[1] for row in connection.execute("PRAGMA index_list(email_feedback)").fetchall()}
+
+    assert "idx_application_events_application_id" in event_indexes
+    assert "idx_email_feedback_signature" in feedback_indexes
 
 
 def test_init_db_baselines_existing_schema_without_rerunning_migrations(tmp_path: Path) -> None:
@@ -212,7 +230,12 @@ def test_init_db_baselines_existing_schema_without_rerunning_migrations(tmp_path
             """
         ).fetchone()
 
-    assert versions == [(1, "001_init"), (2, "002_add_rejection_reason"), (3, "003_add_email_feedback")]
+    assert versions == [
+        (1, "001_init"),
+        (2, "002_add_rejection_reason"),
+        (3, "003_add_email_feedback"),
+        (4, "004_add_lookup_indexes"),
+    ]
     assert rejection_columns == ["rejection_reason"]
     assert feedback_table is not None
 

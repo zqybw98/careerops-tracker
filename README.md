@@ -96,7 +96,8 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |-- migrations/
 |   |-- 001_init.sql
 |   |-- 002_add_rejection_reason.sql
-|   `-- 003_add_email_feedback.sql
+|   |-- 003_add_email_feedback.sql
+|   `-- 004_add_lookup_indexes.sql
 |-- .streamlit/
 |   `-- config.toml
 |-- .github/

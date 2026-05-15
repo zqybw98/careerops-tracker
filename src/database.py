@@ -370,6 +370,11 @@ def _migration_is_satisfied(connection: sqlite3.Connection, version: int) -> boo
         return _column_exists(connection, "applications", "rejection_reason")
     if version == 3:
         return _table_exists(connection, "email_feedback")
+    if version == 4:
+        return _index_exists(connection, "idx_application_events_application_id") and _index_exists(
+            connection,
+            "idx_email_feedback_signature",
+        )
     return False
 
 
@@ -399,6 +404,19 @@ def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
 def _column_exists(connection: sqlite3.Connection, table_name: str, column_name: str) -> bool:
     rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
     return any(str(row["name"]) == column_name for row in rows)
+
+
+def _index_exists(connection: sqlite3.Connection, index_name: str) -> bool:
+    row = connection.execute(
+        """
+        SELECT 1
+        FROM sqlite_master
+        WHERE type = 'index'
+          AND name = ?
+        """,
+        (index_name,),
+    ).fetchone()
+    return row is not None
 
 
 def _get_application_by_id(connection: sqlite3.Connection, application_id: int) -> dict[str, Any] | None:

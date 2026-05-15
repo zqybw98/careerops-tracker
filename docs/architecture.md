@@ -181,6 +181,18 @@ version without rerunning unsafe `ALTER TABLE` statements.
 The database is local and ignored by Git (`data/`), so sample data and tests
 can be shared without exposing personal job search records.
 
+Lookup indexes are created through migrations for frequently accessed workflow
+tables:
+
+| Index | Purpose |
+| --- | --- |
+| `idx_application_events_application_id` | Speeds up activity-log reads for one selected application. |
+| `idx_email_feedback_signature` | Supports fast lookup of saved email correction signatures. |
+
+Foreign key constraints are intentionally not enforced yet for these history
+tables. This keeps deleted-application events and correction feedback available
+for audit-style review while the MVP remains lightweight.
+
 ## Activity Logging
 
 Every create, update, delete, CSV sync import, dashboard inline edit,
