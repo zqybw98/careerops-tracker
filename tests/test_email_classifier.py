@@ -27,6 +27,24 @@ def test_classifies_moving_forward_rejection_email() -> None:
     assert result["confidence"] >= 0.8
 
 
+def test_classifies_bilingual_amazon_rejection_email() -> None:
+    result = classify_email(
+        subject="Bewerbung bei Amazon: Status-Update",
+        body=(
+            "Vielen Dank für Ihre Bewerbung auf die Stelle als Graduate Area/Shift Manager. "
+            "Nach sorgfältiger Prüfung Ihrer Bewerbung haben wir uns entschieden, Sie nicht weiter "
+            "für diese Stelle zu berücksichtigen. "
+            "Thank you for your application for the position of Graduate Area/Shift Manager. "
+            "After careful consideration and review of your application, we have decided to progress "
+            "with other candidates for this role."
+        ),
+    )
+
+    assert result["category"] == "Rejection"
+    assert result["suggested_status"] == "Rejected"
+    assert result["confidence"] >= 0.9
+
+
 def test_classifies_interview_invitation() -> None:
     result = classify_email(
         subject="Interview invitation",

@@ -76,6 +76,22 @@ def test_extracts_rejection_reason_from_moving_forward_email() -> None:
     assert details["rejection_reason"] == "Other candidates were selected."
 
 
+def test_extracts_rejection_reason_from_bilingual_amazon_email() -> None:
+    details = extract_application_details(
+        subject="Bewerbung bei Amazon: Status-Update",
+        body=(
+            "Vielen Dank für Ihre Bewerbung auf die Stelle als Graduate Area/Shift Manager. "
+            "Nach sorgfältiger Prüfung Ihrer Bewerbung haben wir uns entschieden, Sie nicht weiter "
+            "für diese Stelle zu berücksichtigen. "
+            "Thank you for your application for the position of Graduate Area/Shift Manager. "
+            "After careful consideration and review of your application, we have decided to progress "
+            "with other candidates for this role."
+        ),
+    )
+
+    assert details["rejection_reason"] == "Other candidates were selected."
+
+
 def test_extracts_germany_specific_rejection_taxonomy() -> None:
     language_details = extract_application_details(
         subject="Rueckmeldung zu Ihrer Bewerbung",

@@ -1053,9 +1053,14 @@ def render_email_assistant(applications: list[dict]) -> None:
         )
         selected_id = label_id_map[selected_label]
         selected = next(item for item in applications if item["id"] == selected_id)
-        workflow_context = build_email_workflow_for_application(
+        status_to_apply, details_for_update, classification_for_update = _render_email_update_controls(
             result,
             details,
+            selected,
+        )
+        workflow_context = build_email_workflow_for_application(
+            classification_for_update,
+            details_for_update,
             selected,
             match,
             match_candidates,
@@ -1074,7 +1079,16 @@ def render_email_assistant(applications: list[dict]) -> None:
         else:
             st.warning("No strong existing application match was found. Select the correct application manually.")
 
-        _render_email_update_preview(selected, result, details, recommendation, workflow_decision)
+        if status_to_apply != result.get("suggested_status"):
+            st.info(f"Manual status override selected: {result.get('suggested_status')} -> {status_to_apply}.")
+
+        _render_email_update_preview(
+            selected,
+            classification_for_update,
+            details_for_update,
+            recommendation,
+            workflow_decision,
+        )
         st.info(workflow_decision["decision"])
         if not workflow_decision["status_update_allowed"]:
             st.warning("Status update is disabled because the email is below the confidence threshold.")
@@ -1088,8 +1102,8 @@ def render_email_assistant(applications: list[dict]) -> None:
             apply_email_workflow_update(
                 selected_id,
                 selected,
-                result,
-                details,
+                classification_for_update,
+                details_for_update,
                 recommendation,
                 apply_status=True,
                 operation_summary=operation_summary,
@@ -1101,8 +1115,8 @@ def render_email_assistant(applications: list[dict]) -> None:
             apply_email_workflow_update(
                 selected_id,
                 selected,
-                result,
-                details,
+                classification_for_update,
+                details_for_update,
                 recommendation,
                 apply_status=False,
                 operation_summary=operation_summary,
@@ -1120,7 +1134,7 @@ def render_email_assistant(applications: list[dict]) -> None:
             st.dataframe(
                 pd.DataFrame(
                     build_workflow_steps(
-                        result,
+                        classification_for_update,
                         recommendation,
                         has_match=bool(match),
                         workflow_decision=workflow_decision,
@@ -1132,8 +1146,8 @@ def render_email_assistant(applications: list[dict]) -> None:
 
         with st.expander("Review analysis details"):
             render_email_analysis_details(
-                result,
-                details,
+                classification_for_update,
+                details_for_update,
                 match,
                 match_candidates,
                 create_recommendation,
@@ -1142,8 +1156,8 @@ def render_email_assistant(applications: list[dict]) -> None:
 
         render_email_feedback_controls(
             applications=applications,
-            classification=result,
-            details=details,
+            classification=classification_for_update,
+            details=details_for_update,
             match=match,
             match_candidates=match_candidates,
         )
@@ -1327,6 +1341,97 @@ def _render_compact_card(column: object, label: str, value: object, detail: str 
         st.markdown(f"**{_compact_display(value)}**")
         if detail:
             st.caption(detail)
+
+
+def _render_email_update_controls(
+    classification: dict,
+    details: dict[str, str],
+    selected: dict,
+) -> tuple[str, dict[str, str], dict]:
+    selected_id = int(selected.get("id") or 0)
+    original_status = str(classification.get("suggested_status") or "Applied")
+    status_cols = st.columns([1, 2])
+    status_to_apply = status_cols[0].selectbox(
+        "Status to apply",
+        STATUS_OPTIONS,
+        index=_option_index(STATUS_OPTIONS, original_status),
+        key=f"email_status_override_{selected_id}_{original_status}",
+    )
+
+    details_for_update = dict(details)
+    if status_to_apply == "Rejected":
+        default_reason = (
+            details.get("rejection_reason")
+            or selected.get("rejection_reason")
+            or "Rejected based on classified recruiting email."
+        )
+        rejection_reason = status_cols[1].text_input(
+            "Rejection reason",
+            value=default_reason,
+            key=f"email_rejection_reason_override_{selected_id}_{original_status}",
+        )
+        if rejection_reason.strip():
+            details_for_update["rejection_reason"] = rejection_reason.strip()
+    else:
+        status_cols[1].caption("Change the status here when the email classification is wrong.")
+
+    return status_to_apply, details_for_update, _classification_with_status_override(classification, status_to_apply)
+
+
+def _classification_with_status_override(classification: dict, status_to_apply: str) -> dict:
+    original_status = str(classification.get("suggested_status") or "")
+    if status_to_apply == original_status:
+        return classification
+
+    adjusted = dict(classification)
+    adjusted["suggested_status"] = status_to_apply
+    adjusted["category"] = _category_for_status(status_to_apply)
+    adjusted["confidence"] = max(float(classification.get("confidence") or 0), 0.85)
+    adjusted["suggested_next_action"] = _next_action_for_status(status_to_apply)
+    adjusted["suggested_follow_up_days"] = _follow_up_days_for_status(status_to_apply)
+    adjusted["matched_keywords"] = [*classification.get("matched_keywords", []), "manual status override"]
+    adjusted["manual_override"] = True
+    return adjusted
+
+
+def _category_for_status(status: str) -> str:
+    return {
+        "Confirmation Received": "Application Confirmation",
+        "Interview Scheduled": "Interview Invitation",
+        "Assessment": "Assessment / Coding Test",
+        "Rejected": "Rejection",
+        "Follow-up Needed": "Follow-up Needed",
+        "Offer": "Offer",
+        "No Response": "No Response",
+        "Saved": "Other",
+        "Applied": "Other",
+    }.get(status, "Other")
+
+
+def _next_action_for_status(status: str) -> str:
+    return {
+        "Confirmation Received": "Wait for the next response and follow up if needed.",
+        "Interview Scheduled": "Confirm availability and prepare interview notes.",
+        "Assessment": "Review the assessment instructions and deadline.",
+        "Rejected": "Close the application and capture useful notes.",
+        "Follow-up Needed": "Send or prepare a polite follow-up message.",
+        "Offer": "Review the offer details and prepare a response.",
+        "No Response": "Archive or mark the application as no response.",
+        "Saved": "Review the saved application and decide whether to apply.",
+        "Applied": "Wait for response and follow up if needed.",
+    }.get(status, "Review manually and decide whether the application needs an update.")
+
+
+def _follow_up_days_for_status(status: str) -> int | None:
+    return {
+        "Confirmation Received": 7,
+        "Interview Scheduled": 1,
+        "Assessment": 2,
+        "Follow-up Needed": 0,
+        "Offer": 2,
+        "Applied": 7,
+        "Saved": 7,
+    }.get(status)
 
 
 def _render_email_update_preview(
