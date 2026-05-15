@@ -288,7 +288,7 @@ lists, and invalid confidence values fail early with clear errors.
 
 ## Why This Project
 
-This project demonstrates practical automation, structured information management, workflow analytics, and tooling. It is intentionally small enough to complete in one to two weeks while still showing real business value for QA, automation, technical operations, and tooling roles.
+This project started as a compact portfolio MVP and has evolved into a local-first workflow tool for structured job-search operations. It demonstrates practical automation, traceable status updates, workflow analytics, and tooling discipline for QA, automation, technical operations, and tooling roles.
 
 ## Future Improvements
 
