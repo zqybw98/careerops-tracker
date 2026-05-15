@@ -63,6 +63,19 @@ def test_extracts_rejection_reason_from_email_text() -> None:
     assert details["rejection_reason"] == "Position closed or filled."
 
 
+def test_extracts_rejection_reason_from_moving_forward_email() -> None:
+    details = extract_application_details(
+        subject="Yibo Zhang & Bending Spoons - Regarding your application",
+        body=(
+            "We have carefully reviewed your application and are sorry to inform you that "
+            "we won't be moving forward with it this time. There are a lot of strong "
+            "candidates and some of them are better suited for the job."
+        ),
+    )
+
+    assert details["rejection_reason"] == "Other candidates were selected."
+
+
 def test_extracts_germany_specific_rejection_taxonomy() -> None:
     language_details = extract_application_details(
         subject="Rueckmeldung zu Ihrer Bewerbung",

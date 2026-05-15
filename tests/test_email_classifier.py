@@ -12,6 +12,21 @@ def test_classifies_rejection_email() -> None:
     assert result["confidence"] >= 0.5
 
 
+def test_classifies_moving_forward_rejection_email() -> None:
+    result = classify_email(
+        subject="Yibo Zhang & Bending Spoons - Regarding your application",
+        body=(
+            "We have carefully reviewed your application and are sorry to inform you that "
+            "we won't be moving forward with it this time. There are a lot of strong "
+            "candidates and some of them are better suited for the job."
+        ),
+    )
+
+    assert result["category"] == "Rejection"
+    assert result["suggested_status"] == "Rejected"
+    assert result["confidence"] >= 0.8
+
+
 def test_classifies_interview_invitation() -> None:
     result = classify_email(
         subject="Interview invitation",
