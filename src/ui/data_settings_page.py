@@ -86,7 +86,7 @@ def render_data_tools(applications: list[dict]) -> None:
         )
         calendar_date_range = cal_col_b.date_input(
             "Calendar date range",
-            value=(None, None),
+            value=_calendar_date_range_default(calendar_items),
             key="calendar_export_date_range",
         )
         calendar_start_date, calendar_end_date = _date_range_bounds(calendar_date_range)
@@ -157,6 +157,11 @@ def _date_range_bounds(value: object) -> tuple[date | None, date | None]:
     if isinstance(value, date):
         return value, value
     return None, None
+
+
+def _calendar_date_range_default(calendar_items: list[CalendarItem]) -> tuple[date, date]:
+    event_dates = [item.event_date for item in calendar_items]
+    return min(event_dates), max(event_dates)
 
 
 def _filter_calendar_items(
