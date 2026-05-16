@@ -127,8 +127,11 @@ def build_email_workflow_for_application(
     application: dict[str, Any],
     match: dict[str, Any] | None,
     match_candidates: list[dict[str, Any]],
+    recommendation_override: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     recommendation = build_next_action_recommendation(classification, details, application)
+    if recommendation_override:
+        recommendation = {**recommendation, **recommendation_override}
     workflow_decision = build_workflow_decision(
         classification,
         details,
@@ -158,7 +161,7 @@ def apply_email_workflow_update(
     selected: dict[str, Any],
     classification: dict[str, Any],
     details: dict[str, str],
-    recommendation: dict[str, str],
+    recommendation: dict[str, Any],
     apply_status: bool,
     operation_summary: dict[str, str] | None = None,
     db_path: Path | str = DEFAULT_DB_PATH,
@@ -169,9 +172,9 @@ def apply_email_workflow_update(
     if operation_summary:
         notes = _append_note(notes, operation_summary["audit_note"])
 
-    rejection_reason = selected.get("rejection_reason", "")
+    rejection_reason = details.get("rejection_reason") or selected.get("rejection_reason", "")
     if classification["suggested_status"] == "Rejected" and not rejection_reason:
-        rejection_reason = details.get("rejection_reason") or "Rejected based on classified recruiting email."
+        rejection_reason = "Rejected based on classified recruiting email."
 
     update_application(
         selected_id,

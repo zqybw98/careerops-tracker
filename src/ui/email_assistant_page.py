@@ -232,7 +232,8 @@ def render_email_assistant(applications: list[dict]) -> None:
         )
         selected_id = label_id_map[selected_label]
         selected = next(item for item in applications if item["id"] == selected_id)
-        status_to_apply, details_for_update, classification_for_update = _render_email_update_controls(
+        selected_match = _match_for_application_id(selected_id, match, match_candidates)
+        status_to_apply, details_for_update, classification_for_update = _render_email_status_control(
             result,
             details,
             selected,
@@ -241,22 +242,37 @@ def render_email_assistant(applications: list[dict]) -> None:
             classification_for_update,
             details_for_update,
             selected,
-            match,
+            selected_match,
             match_candidates,
+        )
+        recommendation = workflow_context["recommendation"]
+        details_for_update, recommendation = _render_email_apply_draft_controls(
+            selected,
+            classification_for_update,
+            details_for_update,
+            recommendation,
+        )
+        workflow_context = build_email_workflow_for_application(
+            classification_for_update,
+            details_for_update,
+            selected,
+            selected_match,
+            match_candidates,
+            recommendation_override=recommendation,
         )
         recommendation = workflow_context["recommendation"]
         workflow_decision = workflow_context["workflow_decision"]
         operation_summary = workflow_context["operation_summary"]
 
-        if default_match:
-            match_confidence = float(default_match.get("confidence") or 0)
-            match_text = f"{default_match['company']} / {default_match['role']} ({match_confidence:.0%})"
-            if match:
+        if selected_match:
+            match_confidence = float(selected_match.get("confidence") or 0)
+            match_text = f"{selected_match['company']} / {selected_match['role']} ({match_confidence:.0%})"
+            if match and int(match.get("application_id") or 0) == selected_id:
                 st.success(f"Matched to existing application: {match_text}")
             else:
-                st.warning(f"Possible match selected: {match_text}. Review before applying.")
+                st.warning(f"Selected possible match: {match_text}. Review before applying.")
         else:
-            st.warning("No strong existing application match was found. Select the correct application manually.")
+            st.warning("Manually selected application. Review the suggested changes before applying.")
 
         if status_to_apply != result.get("suggested_status"):
             st.info(f"Manual status override selected: {result.get('suggested_status')} -> {status_to_apply}.")
@@ -315,7 +331,7 @@ def render_email_assistant(applications: list[dict]) -> None:
                     build_workflow_steps(
                         classification_for_update,
                         recommendation,
-                        has_match=bool(match),
+                        has_match=bool(selected_match),
                         workflow_decision=workflow_decision,
                     )
                 ),
@@ -327,7 +343,7 @@ def render_email_assistant(applications: list[dict]) -> None:
             render_email_analysis_details(
                 classification_for_update,
                 details_for_update,
-                match,
+                selected_match,
                 match_candidates,
                 create_recommendation,
                 has_applications=bool(applications),
@@ -337,7 +353,7 @@ def render_email_assistant(applications: list[dict]) -> None:
             applications=applications,
             classification=classification_for_update,
             details=details_for_update,
-            match=match,
+            match=selected_match,
             match_candidates=match_candidates,
         )
     else:
@@ -522,39 +538,83 @@ def _render_compact_card(column: Any, label: str, value: object, detail: str = "
             st.caption(detail)
 
 
-def _render_email_update_controls(
+def _render_email_status_control(
     classification: dict,
     details: dict[str, str],
     selected: dict,
 ) -> tuple[str, dict[str, str], dict]:
     selected_id = int(selected.get("id") or 0)
     original_status = str(classification.get("suggested_status") or "Applied")
-    status_cols = st.columns([1, 2])
-    status_to_apply = status_cols[0].selectbox(
+    st.markdown("**Review and adjust before applying**")
+    status_to_apply = st.selectbox(
         "Status to apply",
         STATUS_OPTIONS,
         index=_option_index(STATUS_OPTIONS, original_status),
         key=f"email_status_override_{selected_id}_{original_status}",
+        help="Change this if the email was classified into the wrong workflow stage.",
     )
 
     details_for_update = dict(details)
-    if status_to_apply == "Rejected":
-        default_reason = (
-            details.get("rejection_reason")
-            or selected.get("rejection_reason")
-            or "Rejected based on classified recruiting email."
-        )
-        rejection_reason = status_cols[1].text_input(
-            "Rejection reason",
-            value=default_reason,
-            key=f"email_rejection_reason_override_{selected_id}_{original_status}",
-        )
-        if rejection_reason.strip():
-            details_for_update["rejection_reason"] = rejection_reason.strip()
-    else:
-        status_cols[1].caption("Change the status here when the email classification is wrong.")
-
     return status_to_apply, details_for_update, _classification_with_status_override(classification, status_to_apply)
+
+
+def _render_email_apply_draft_controls(
+    selected: dict,
+    classification: dict,
+    details: dict[str, str],
+    recommendation: dict[str, Any],
+) -> tuple[dict[str, str], dict[str, Any]]:
+    selected_id = int(selected.get("id") or 0)
+    suggested_status = str(classification.get("suggested_status") or selected.get("status") or "Applied")
+    follow_up_date = _text_to_date(recommendation.get("follow_up_date") or selected.get("follow_up_date"))
+
+    draft_col_a, draft_col_b = st.columns([2, 1])
+    next_action = draft_col_a.text_area(
+        "Next action to save",
+        value=str(recommendation.get("next_action") or selected.get("next_action") or ""),
+        height=90,
+        key=f"email_next_action_override_{selected_id}_{suggested_status}",
+        help="Edit the task that will be written to the application.",
+    )
+    keep_follow_up = draft_col_b.checkbox(
+        "Set follow-up date",
+        value=bool(follow_up_date),
+        key=f"email_keep_follow_up_override_{selected_id}_{suggested_status}",
+    )
+    follow_up_value = draft_col_b.date_input(
+        "Follow-up date",
+        value=follow_up_date or date.today() + timedelta(days=7),
+        disabled=not keep_follow_up,
+        key=f"email_follow_up_override_{selected_id}_{suggested_status}",
+    )
+
+    default_rejection_reason = (
+        details.get("rejection_reason")
+        or selected.get("rejection_reason")
+        or ("Rejected based on classified recruiting email." if suggested_status == "Rejected" else "")
+    )
+    rejection_reason = st.text_area(
+        "Rejection reason",
+        value=default_rejection_reason,
+        height=80,
+        key=f"email_rejection_reason_override_{selected_id}_{suggested_status}",
+        placeholder=(
+            "Optional. Useful for rejected applications, for example no interview, position closed, or mismatch."
+        ),
+    )
+
+    details_for_update = dict(details)
+    if rejection_reason.strip():
+        details_for_update["rejection_reason"] = rejection_reason.strip()
+    else:
+        details_for_update.pop("rejection_reason", None)
+
+    recommendation_for_update = {
+        **recommendation,
+        "next_action": next_action.strip(),
+        "follow_up_date": follow_up_value.isoformat() if keep_follow_up else "",
+    }
+    return details_for_update, recommendation_for_update
 
 
 def _classification_with_status_override(classification: dict, status_to_apply: str) -> dict:
@@ -1036,6 +1096,19 @@ def _matched_label_index(
         if label_id_map[label] == matched_id:
             return index
     return 0
+
+
+def _match_for_application_id(
+    application_id: int,
+    match: dict | None,
+    match_candidates: list[dict],
+) -> dict | None:
+    if match and int(match.get("application_id") or 0) == application_id:
+        return match
+    return next(
+        (candidate for candidate in match_candidates if int(candidate.get("application_id") or 0) == application_id),
+        None,
+    )
 
 
 def _gmail_preview_display_df(previews: list[dict]) -> pd.DataFrame:

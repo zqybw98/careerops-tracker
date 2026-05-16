@@ -19,7 +19,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Extract company, role, location, contact, source link, deadlines, interview dates, and rejection reasons from pasted recruiting emails.
 - Recognize Germany-specific rejection patterns such as German-language requirements, visa/work authorization, location constraints, filled roles, and candidate-fit mismatches.
 - Draft Saved application records from pasted job descriptions or job URLs by extracting company, role, location, source link, contact, and deadline hints.
-- Suggest application status updates from email classification results.
+- Suggest application status updates from email classification results, then let the user adjust the matched record, status, next action, follow-up date, and rejection reason before applying.
 - Decide the recommended workflow action: update status, save a task, confirm a match, close a rejection, or create a new record.
 - Generate an operation summary that explains the classification, target record, match confidence, status action, and next step.
 - Gate status updates with confidence thresholds: high confidence can be applied, medium confidence requires review, and low confidence is blocked.
@@ -251,9 +251,9 @@ before applying any suggested application updates. `credentials.json` and
 
 1. Add a job application.
 2. Paste a recruiting email into the Email Assistant.
-3. Review the detected category, confidence score, extracted application context, suggested status, and smart next action.
-4. Save correction feedback if the assistant chose the wrong category, status, or matched application.
-5. Apply the next action or suggested status to a matched application, or create a new application from the email.
+3. Review the matched application, current status, suggested status, next action, follow-up date, and rejection reason.
+4. Adjust any suggested field before applying, or save correction feedback if the assistant chose the wrong category, status, or matched application.
+5. Apply the confirmed update to the matched application, save only the next action, or create a new application from the email.
 6. Generate a follow-up, thank-you, outreach, or acknowledgement email from the Templates tab.
 7. Use the dashboard to monitor waiting applications, follow-up tasks, response rates, role conversion, and stale records.
 

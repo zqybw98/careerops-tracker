@@ -110,6 +110,66 @@ def test_apply_email_workflow_update_records_summary(tmp_path: Path) -> None:
     assert any(event["source"] == "email_assistant" for event in events)
 
 
+def test_apply_email_workflow_update_uses_reviewed_fields(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    init_db(db_path)
+    application_id = create_application(
+        {
+            "company": "Amazon",
+            "role": "Graduate Area Manager",
+            "application_date": "2026-05-13",
+            "status": "Confirmation Received",
+            "rejection_reason": "Old reason",
+        },
+        db_path=db_path,
+    )
+    selected = get_applications(db_path)[0]
+    classification = {
+        "category": "Rejection",
+        "confidence": 0.93,
+        "suggested_status": "Rejected",
+        "suggested_follow_up_days": None,
+    }
+    details = {
+        "company": "Amazon",
+        "role": "Graduate Area Manager",
+        "rejection_reason": "Other candidates were selected.",
+    }
+    reviewed_recommendation = {
+        "priority": "Medium",
+        "next_action": "Archive the Amazon application and record lessons learned.",
+        "follow_up_date": "",
+        "template_type": "Rejection Acknowledgement Email",
+        "rationale": "User reviewed the email and confirmed the rejection.",
+    }
+    workflow = build_email_workflow_for_application(
+        classification,
+        details,
+        selected,
+        match={"application_id": application_id, "company": "Amazon", "role": "Graduate Area Manager"},
+        match_candidates=[],
+        recommendation_override=reviewed_recommendation,
+    )
+
+    apply_email_workflow_update(
+        application_id,
+        selected,
+        classification,
+        details,
+        workflow["recommendation"],
+        apply_status=True,
+        operation_summary=workflow["operation_summary"],
+        db_path=db_path,
+    )
+
+    updated = get_applications(db_path)[0]
+
+    assert updated["status"] == "Rejected"
+    assert updated["next_action"] == "Archive the Amazon application and record lessons learned."
+    assert updated["follow_up_date"] == ""
+    assert updated["rejection_reason"] == "Other candidates were selected."
+
+
 def test_apply_gmail_preview_preserves_rejection_default(tmp_path: Path) -> None:
     db_path = tmp_path / "applications.db"
     init_db(db_path)
