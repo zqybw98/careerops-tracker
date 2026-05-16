@@ -3,6 +3,23 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any
 
+DASHBOARD_CLOSED_STATUSES = {"Rejected", "No Response"}
+
+
+def filter_dashboard_applications(
+    applications: list[dict[str, Any]],
+    *,
+    include_closed: bool = False,
+) -> list[dict[str, Any]]:
+    if include_closed:
+        return list(applications)
+
+    return [
+        application
+        for application in applications
+        if str(application.get("status") or "").strip() not in DASHBOARD_CLOSED_STATUSES
+    ]
+
 
 def build_summary(applications: list[dict[str, Any]]) -> dict[str, int]:
     today = date.today()

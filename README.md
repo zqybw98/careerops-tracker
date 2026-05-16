@@ -33,7 +33,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Keep an activity log for application creation, updates, imports, email-assistant actions, and cleanup.
 - Apply versioned SQLite migrations through a lightweight `schema_version` table.
 - Tune category keywords, parser patterns, matching thresholds, and reminder timing through JSON configuration files.
-- View a Streamlit dashboard with application metrics and status charts.
+- View a Streamlit dashboard with active-pipeline metrics, status charts, and an option to include closed applications.
 - Edit key application fields directly from the dashboard recent applications table.
 - Search and filter applications by company or role, source/contact text, date range, status, and stale-only views.
 - Use bulk application actions to archive records, mark no response, or set follow-up dates from the Applications page.

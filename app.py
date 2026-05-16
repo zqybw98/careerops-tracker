@@ -21,7 +21,7 @@ from src.analytics import (
 )
 from src.application_filters import build_bulk_update_payload, filter_applications
 from src.contacts import build_contact_records
-from src.dashboard import build_summary
+from src.dashboard import build_summary, filter_dashboard_applications
 from src.database import (
     create_application,
     deduplicate_applications,
@@ -149,22 +149,41 @@ def render_app_header(workspace: str) -> None:
 
 
 def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
-    summary = build_summary(applications)
-    pipeline_health = build_pipeline_health(applications)
+    include_closed = st.toggle(
+        "Include closed applications",
+        value=False,
+        key="overview_include_closed_applications",
+        help="Show Rejected and No Response records in the dashboard.",
+    )
+    visible_applications = filter_dashboard_applications(applications, include_closed=include_closed)
+    visible_reminders = _filter_reminders_for_applications(reminders, visible_applications)
+    hidden_closed_count = len(applications) - len(visible_applications)
+
+    if not include_closed and hidden_closed_count:
+        st.caption(f"Hiding {hidden_closed_count} closed application(s): Rejected / No Response.")
+
+    summary = build_summary(visible_applications)
+    pipeline_health = build_pipeline_health(visible_applications)
 
     metric_columns = st.columns(6)
-    metric_columns[0].metric("Total", summary["total"])
+    metric_columns[0].metric("Total shown", summary["total"])
     metric_columns[1].metric("This week", summary["applied_this_week"])
     metric_columns[2].metric("Waiting", summary["waiting"])
     metric_columns[3].metric("Interviews", summary["interviews"])
     metric_columns[4].metric("Assessments", summary["assessments"])
-    metric_columns[5].metric("Rejected", summary["rejections"])
+    if include_closed:
+        metric_columns[5].metric("Rejected", summary["rejections"])
+    else:
+        metric_columns[5].metric("Closed hidden", hidden_closed_count)
 
-    if not applications:
-        st.info("Add your first application to start building the dashboard.")
+    if not visible_applications:
+        if applications:
+            st.info("No active applications to show. Turn on Include closed applications to review closed records.")
+        else:
+            st.info("Add your first application to start building the dashboard.")
         return
 
-    df = pd.DataFrame(applications)
+    df = pd.DataFrame(visible_applications)
     events = get_application_events()
 
     recent_title_col, recent_action_col = st.columns([4, 1])
@@ -177,7 +196,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
         on_click=_go_to_applications_workspace,
     )
     display_df = _with_display_sequence(df)
-    render_dashboard_recent_editor(applications, display_df)
+    render_dashboard_recent_editor(visible_applications, display_df)
     st.divider()
 
     chart_col, reminder_col = st.columns([2, 1])
@@ -199,12 +218,12 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
 
     with reminder_col:
         st.subheader("Pending Actions")
-        if not reminders:
+        if not visible_reminders:
             st.success("No reminders due right now.")
         else:
-            st.caption(f"{len(reminders)} pending action(s)")
+            st.caption(f"{len(visible_reminders)} pending action(s)")
             with st.container(height=520):
-                for reminder in reminders:
+                for reminder in visible_reminders:
                     st.markdown(
                         f"**{reminder['priority']}** - {reminder['company']} / "
                         f"{reminder['role']}  \n"
@@ -222,7 +241,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
 
     activity_col, source_col = st.columns(2)
     with activity_col:
-        monthly_df = pd.DataFrame(build_applications_per_month(applications))
+        monthly_df = pd.DataFrame(build_applications_per_month(visible_applications))
         if monthly_df.empty:
             st.info("Add application dates to see monthly application volume.")
         else:
@@ -238,7 +257,10 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
             st.plotly_chart(monthly_fig, use_container_width=True)
 
     with source_col:
-        source_df = _with_rate_percent(pd.DataFrame(build_response_rate_by_source(applications)), "response_rate")
+        source_df = _with_rate_percent(
+            pd.DataFrame(build_response_rate_by_source(visible_applications)),
+            "response_rate",
+        )
         if source_df.empty:
             st.info("Add source links to compare response rates by channel.")
         else:
@@ -258,7 +280,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
     conversion_col, aging_col = st.columns(2)
     with conversion_col:
         conversion_df = _with_rate_percent(
-            pd.DataFrame(build_interview_conversion_by_role_type(applications)),
+            pd.DataFrame(build_interview_conversion_by_role_type(visible_applications)),
             "conversion_rate",
         )
         if conversion_df.empty:
@@ -278,7 +300,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
             st.plotly_chart(conversion_fig, use_container_width=True)
 
     with aging_col:
-        waiting_df = pd.DataFrame(build_average_waiting_days_by_company(applications))
+        waiting_df = pd.DataFrame(build_average_waiting_days_by_company(visible_applications))
         if waiting_df.empty:
             st.info("Open applications with dates will show company waiting time.")
         else:
@@ -297,7 +319,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
 
     stale_col, saved_col = st.columns(2)
     with stale_col:
-        stale_df = pd.DataFrame(build_stale_pipeline_breakdown(applications))
+        stale_df = pd.DataFrame(build_stale_pipeline_breakdown(visible_applications))
         if stale_df.empty:
             st.info("No open applications to age yet.")
         else:
@@ -314,7 +336,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
             st.plotly_chart(stale_fig, use_container_width=True)
 
     with saved_col:
-        saved_df = pd.DataFrame(build_saved_vs_applied_summary(applications))
+        saved_df = pd.DataFrame(build_saved_vs_applied_summary(visible_applications))
         saved_fig = px.bar(
             saved_df,
             x="stage",
@@ -329,7 +351,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
 
     response_time_col, rejection_reason_col = st.columns(2)
     with response_time_col:
-        response_time_df = pd.DataFrame(build_time_to_first_response_by_source(applications, events))
+        response_time_df = pd.DataFrame(build_time_to_first_response_by_source(visible_applications, events))
         if response_time_df.empty:
             st.info("Status-change history will show time-to-first-response by source.")
         else:
@@ -347,7 +369,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
             st.plotly_chart(response_time_fig, use_container_width=True)
 
     with rejection_reason_col:
-        rejection_df = pd.DataFrame(build_rejection_reason_breakdown(applications))
+        rejection_df = pd.DataFrame(build_rejection_reason_breakdown(visible_applications))
         if rejection_df.empty:
             st.info("Rejected applications with reasons will show a breakdown here.")
         else:
@@ -366,7 +388,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
     funnel_col, follow_up_col = st.columns(2)
     with funnel_col:
         funnel_df = _with_rate_percent(
-            pd.DataFrame(build_interview_to_offer_funnel(applications, events)),
+            pd.DataFrame(build_interview_to_offer_funnel(visible_applications, events)),
             "conversion_rate",
         )
         if funnel_df.empty:
@@ -386,7 +408,10 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
             st.plotly_chart(funnel_fig, use_container_width=True)
 
     with follow_up_col:
-        follow_up_df = _with_rate_percent(pd.DataFrame(build_follow_up_effectiveness(applications, events)), "share")
+        follow_up_df = _with_rate_percent(
+            pd.DataFrame(build_follow_up_effectiveness(visible_applications, events)),
+            "share",
+        )
         if follow_up_df.empty:
             st.info("Applications with follow-up dates will show follow-up effectiveness.")
         else:
@@ -403,7 +428,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
             _style_bar_labels(follow_up_fig)
             st.plotly_chart(follow_up_fig, use_container_width=True)
 
-    matrix_df = _with_rate_percent(pd.DataFrame(build_channel_role_type_matrix(applications)), "response_rate")
+    matrix_df = _with_rate_percent(pd.DataFrame(build_channel_role_type_matrix(visible_applications)), "response_rate")
     if not matrix_df.empty:
         matrix_df = _with_rate_percent(matrix_df, "interview_rate")
         st.subheader("Channel x Role-Type Cross Analysis")
@@ -432,6 +457,11 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
 
 def _go_to_applications_workspace() -> None:
     st.session_state["workspace_nav"] = "Applications"
+
+
+def _filter_reminders_for_applications(reminders: list[dict], applications: list[dict]) -> list[dict]:
+    application_ids = {str(application.get("id")) for application in applications}
+    return [reminder for reminder in reminders if str(reminder.get("application_id")) in application_ids]
 
 
 def render_contacts(applications: list[dict]) -> None:
