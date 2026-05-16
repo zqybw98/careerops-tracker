@@ -32,6 +32,7 @@ from src.database import (
     update_application,
 )
 from src.models import STATUS_OPTIONS
+from src.reminder_actions import PendingAction, build_pending_action_payload
 from src.reminder_engine import generate_reminders
 from src.ui.data_settings_page import render_data_tools
 from src.ui.email_assistant_page import render_assistant_workspace
@@ -162,6 +163,10 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
     if not include_closed and hidden_closed_count:
         st.caption(f"Hiding {hidden_closed_count} closed application(s): Rejected / No Response.")
 
+    pending_action_message = st.session_state.pop("pending_action_success_message", None)
+    if pending_action_message:
+        st.success(pending_action_message)
+
     summary = build_summary(visible_applications)
     pipeline_health = build_pipeline_health(visible_applications)
 
@@ -224,13 +229,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
             st.caption(f"{len(visible_reminders)} pending action(s)")
             with st.container(height=520):
                 for reminder in visible_reminders:
-                    st.markdown(
-                        f"**{reminder['priority']}** - {reminder['company']} / "
-                        f"{reminder['role']}  \n"
-                        f"{reminder['message']}  \n"
-                        f"Due: `{reminder['due_date']}`"
-                    )
-                    st.divider()
+                    render_pending_action_card(reminder, visible_applications)
 
     st.subheader("Decision Analytics")
     health_columns = st.columns(4)
@@ -457,6 +456,66 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
 
 def _go_to_applications_workspace() -> None:
     st.session_state["workspace_nav"] = "Applications"
+
+
+def render_pending_action_card(reminder: dict, applications: list[dict]) -> None:
+    application_id = int(reminder.get("application_id") or 0)
+    application = _application_by_id(applications, application_id)
+    if application is None:
+        return
+
+    with st.container(border=True):
+        st.markdown(
+            f"**{reminder['priority']}** - {reminder['company']} / {reminder['role']}  \n"
+            f"{reminder['message']}  \n"
+            f"Due: `{reminder['due_date']}`"
+        )
+        done_col, snooze_three_col, snooze_seven_col, open_col = st.columns(4)
+        key_suffix = f"{application_id}_{reminder.get('reason', '')}_{reminder.get('due_date', '')}"
+
+        if done_col.button("Done", key=f"pending_done_{key_suffix}", use_container_width=True):
+            _apply_pending_action(application, reminder, "mark_done")
+            st.rerun()
+        if snooze_three_col.button("Snooze 3d", key=f"pending_snooze_3_{key_suffix}", use_container_width=True):
+            _apply_pending_action(application, reminder, "snooze_3")
+            st.rerun()
+        if snooze_seven_col.button("Snooze 7d", key=f"pending_snooze_7_{key_suffix}", use_container_width=True):
+            _apply_pending_action(application, reminder, "snooze_7")
+            st.rerun()
+        if open_col.button("Open", key=f"pending_open_{key_suffix}", use_container_width=True):
+            _open_application_from_pending(application_id)
+            st.rerun()
+
+
+def _apply_pending_action(application: dict, reminder: dict, action: PendingAction) -> None:
+    application_id = int(application["id"])
+    payload = build_pending_action_payload(application, reminder, action)
+    update_application(application_id, payload, source=f"pending_{action}")
+
+    if action == "mark_done":
+        message = f"Marked done: {application.get('company', '')} / {application.get('role', '')}."
+    else:
+        message = (
+            f"Snoozed until {payload['follow_up_date']}: "
+            f"{application.get('company', '')} / {application.get('role', '')}."
+        )
+    st.session_state["pending_action_success_message"] = message
+
+
+def _open_application_from_pending(application_id: int) -> None:
+    st.session_state["workspace_nav"] = "Applications"
+    st.session_state["application_edit_target_id"] = application_id
+    st.session_state["application_status_filter"] = STATUS_OPTIONS
+    st.session_state["application_company_search"] = ""
+    st.session_state["application_source_search"] = ""
+    st.session_state["application_date_range"] = ()
+    st.session_state["application_stale_only"] = False
+
+
+def _application_by_id(applications: list[dict], application_id: int) -> dict | None:
+    return next(
+        (application for application in applications if int(application.get("id") or 0) == application_id), None
+    )
 
 
 def _filter_reminders_for_applications(reminders: list[dict], applications: list[dict]) -> list[dict]:
@@ -775,7 +834,13 @@ def render_applications(applications: list[dict]) -> None:
     )
 
     label_id_map = _application_label_id_map(filtered_applications)
-    selected_label = st.selectbox("Select application to edit", list(label_id_map.keys()))
+    edit_labels = list(label_id_map.keys())
+    target_id = st.session_state.pop("application_edit_target_id", None)
+    if target_id:
+        target_label = _application_label_for_id(label_id_map, int(target_id))
+        if target_label:
+            st.session_state["application_edit_select"] = target_label
+    selected_label = st.selectbox("Select application to edit", edit_labels, key="application_edit_select")
     selected_id = label_id_map[selected_label]
     selected = next(item for item in applications if item["id"] == selected_id)
     key_prefix = f"edit_{selected_id}"
@@ -880,6 +945,10 @@ def _application_label_id_map(applications: list[dict]) -> dict[str, int]:
         label = f"{row['#']} - {row['company']} - {row['role']}"
         labels[label] = int(row["id"])
     return labels
+
+
+def _application_label_for_id(label_id_map: dict[str, int], application_id: int) -> str:
+    return next((label for label, mapped_id in label_id_map.items() if mapped_id == application_id), "")
 
 
 def _date_range_bounds(value: object) -> tuple[date | None, date | None]:

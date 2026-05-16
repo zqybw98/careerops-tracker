@@ -29,6 +29,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Handle realistic recruiting-email edge cases such as forwarded messages, quoted replies, similar roles at the same company, mixed English/German text, multiple dates, and mismatch-based rejections.
 - Optionally sync recent recruiting emails from Gmail with local read-only OAuth.
 - Generate automated reminders for follow-ups, interviews, assessments, and stale applications.
+- Treat pending reminders as a daily action queue with mark-done, snooze, and open-application actions.
 - Generate editable follow-up, interview thank-you, recruiter outreach, and rejection acknowledgement emails in English, German, or Chinese.
 - Keep an activity log for application creation, updates, imports, email-assistant actions, and cleanup.
 - Apply versioned SQLite migrations through a lightweight `schema_version` table.

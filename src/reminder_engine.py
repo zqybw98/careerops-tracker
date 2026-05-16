@@ -26,15 +26,16 @@ def generate_reminders(
         application_date = _parse_date(application.get("application_date"))
         follow_up_date = _parse_date(application.get("follow_up_date"))
 
-        if follow_up_date and follow_up_date <= current_date:
-            rule = REMINDER_RULES["follow_up_due"]
-            reminders.append(
-                _build_reminder(
-                    application,
-                    due_date=follow_up_date,
-                    rule=rule,
+        if follow_up_date:
+            if follow_up_date <= current_date:
+                rule = REMINDER_RULES["follow_up_due"]
+                reminders.append(
+                    _build_reminder(
+                        application,
+                        due_date=follow_up_date,
+                        rule=rule,
+                    )
                 )
-            )
             continue
 
         if status == "Interview Scheduled":
