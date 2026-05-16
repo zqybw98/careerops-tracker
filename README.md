@@ -271,6 +271,7 @@ hard-coded in Python modules:
 
 - `email_classification_rules.json`: email categories, multilingual keywords, suggested statuses, next actions, follow-up intervals, and confidence settings.
 - `email_parser_rules.json`: extraction regex patterns, common locations, intent keywords, rejection reason patterns, generic email domains, and match thresholds.
+- `job_post_rules.json`: job-post extraction patterns, job-board domains, role keywords, deadline keywords, and saved-application defaults.
 - `reminder_rules.json`: reminder priorities, messages, waiting-day thresholds, and default due-date behavior.
 
 This makes future tuning easier: a new German rejection phrase, a stricter match
