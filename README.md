@@ -43,8 +43,10 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Analyze response rate by source, including Germany-specific job sources, monthly application volume, role-type conversion, waiting days, stale pipeline risk, time-to-first-response, rejection reasons, follow-up outcomes, interview-to-offer funnel, and channel x role-type combinations.
 - Navigate through a simplified sidebar workspace layout: Overview, Applications, Contacts, Email Assistant, and Data & Settings.
 - Load demo applications to preview the dashboard immediately after setup.
+- Preview CSV imports before writing to SQLite, including created, updated, unchanged, and overwritten fields.
 - Import and export applications with CSV, including common English and Chinese headers.
 - Re-import updated CSV files without creating duplicate application records.
+- Back up local data with applications CSV, activity log CSV, and SQLite database downloads.
 - Keep Gmail integration optional and local-only.
 
 ## Screenshots
@@ -263,7 +265,10 @@ For a quick demo, open the Data tab and click `Load sample applications`.
 The CSV importer supports the default English columns and common Chinese headers
 such as `公司名称`, `职位名称`, `申请日期`, `最新状态`, `拒绝原因`, and `备注/来源`.
 When the same company, role, and application date already exist, CSV import
-updates the existing record instead of adding a duplicate.
+previews the fields that will be updated and then updates the existing record
+instead of adding a duplicate. The Data & Settings page also includes one-click
+downloads for application CSV data, the activity log, and the local SQLite
+database.
 
 ## Configurable Rules
 

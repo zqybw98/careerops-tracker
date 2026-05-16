@@ -20,6 +20,33 @@ class Migration:
     path: Path
 
 
+@dataclass(frozen=True)
+class ApplicationFieldChange:
+    field: str
+    current: str
+    incoming: str
+
+
+@dataclass(frozen=True)
+class ApplicationSyncPreviewRow:
+    action: str
+    company: str
+    role: str
+    application_date: str
+    matched_id: int | None
+    field_changes: list[ApplicationFieldChange]
+    reason: str
+
+
+@dataclass(frozen=True)
+class ApplicationSyncPreview:
+    rows: list[ApplicationSyncPreviewRow]
+    created: int
+    updated: int
+    unchanged: int
+    skipped: int
+
+
 def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -183,6 +210,96 @@ def sync_applications(
             skipped += 1
 
     return {"created": created, "updated": updated, "skipped": skipped}
+
+
+def preview_application_sync(
+    rows: list[dict[str, Any]],
+    db_path: Path | str = DEFAULT_DB_PATH,
+) -> ApplicationSyncPreview:
+    existing_applications = get_applications(db_path)
+    exact_index, fallback_index = _build_application_indexes(existing_applications)
+
+    preview_rows: list[ApplicationSyncPreviewRow] = []
+    created = 0
+    updated = 0
+    unchanged = 0
+    skipped = 0
+
+    for row in rows:
+        cleaned = _clean_payload(row)
+        company = str(cleaned.get("company", "") or "").strip()
+        role = str(cleaned.get("role", "") or "").strip()
+        application_date = str(cleaned.get("application_date", "") or "").strip()
+
+        if not company or not role:
+            skipped += 1
+            preview_rows.append(
+                ApplicationSyncPreviewRow(
+                    action="Skipped",
+                    company=company,
+                    role=role,
+                    application_date=application_date,
+                    matched_id=None,
+                    field_changes=[],
+                    reason="Missing company or role.",
+                )
+            )
+            continue
+
+        existing = _find_existing_application(cleaned, exact_index, fallback_index)
+        if existing is None:
+            created += 1
+            _add_to_indexes({**cleaned, "id": None}, exact_index, fallback_index)
+            preview_rows.append(
+                ApplicationSyncPreviewRow(
+                    action="Created",
+                    company=company,
+                    role=role,
+                    application_date=application_date,
+                    matched_id=None,
+                    field_changes=_new_record_field_changes(cleaned),
+                    reason="No matching application exists yet.",
+                )
+            )
+            continue
+
+        merged = _merge_application(existing, cleaned)
+        field_changes = _application_field_changes(existing, merged)
+        matched_id = _safe_int(existing.get("id"))
+        if field_changes:
+            updated += 1
+            preview_rows.append(
+                ApplicationSyncPreviewRow(
+                    action="Updated",
+                    company=company,
+                    role=role,
+                    application_date=application_date,
+                    matched_id=matched_id,
+                    field_changes=field_changes,
+                    reason="Existing application will receive non-empty CSV values.",
+                )
+            )
+        else:
+            unchanged += 1
+            preview_rows.append(
+                ApplicationSyncPreviewRow(
+                    action="Unchanged",
+                    company=company,
+                    role=role,
+                    application_date=application_date,
+                    matched_id=matched_id,
+                    field_changes=[],
+                    reason="CSV row matches the current application record.",
+                )
+            )
+
+    return ApplicationSyncPreview(
+        rows=preview_rows,
+        created=created,
+        updated=updated,
+        unchanged=unchanged,
+        skipped=skipped,
+    )
 
 
 def deduplicate_applications(db_path: Path | str = DEFAULT_DB_PATH) -> int:
@@ -533,6 +650,34 @@ def _has_application_changes(existing: dict[str, Any], incoming: dict[str, Any])
         str(existing.get(column, "") or "").strip() != str(incoming.get(column, "") or "").strip()
         for column in APPLICATION_COLUMNS
     )
+
+
+def _application_field_changes(
+    existing: dict[str, Any],
+    incoming: dict[str, Any],
+) -> list[ApplicationFieldChange]:
+    changes: list[ApplicationFieldChange] = []
+    for column in APPLICATION_COLUMNS:
+        current = str(existing.get(column, "") or "").strip()
+        new_value = str(incoming.get(column, "") or "").strip()
+        if current != new_value:
+            changes.append(ApplicationFieldChange(field=column, current=current, incoming=new_value))
+    return changes
+
+
+def _new_record_field_changes(application: dict[str, Any]) -> list[ApplicationFieldChange]:
+    return [
+        ApplicationFieldChange(field=column, current="", incoming=str(application.get(column, "") or "").strip())
+        for column in APPLICATION_COLUMNS
+        if str(application.get(column, "") or "").strip()
+    ]
+
+
+def _safe_int(value: Any) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _application_exact_key(application: dict[str, Any]) -> tuple[str, str, str]:

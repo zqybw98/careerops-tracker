@@ -9,6 +9,7 @@ from src.database import (
     get_applications,
     get_email_feedback,
     init_db,
+    preview_application_sync,
     sync_applications,
     update_application,
 )
@@ -339,6 +340,64 @@ def test_sync_applications_skips_unchanged_records(tmp_path: Path) -> None:
 
     assert result == {"created": 0, "updated": 0, "skipped": 1}
     assert len(get_applications(db_path)) == 1
+
+
+def test_preview_application_sync_groups_created_updated_and_unchanged(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    init_db(db_path)
+    create_application(
+        {
+            "company": "SAP",
+            "role": "QA Engineer",
+            "application_date": "2026-04-30",
+            "status": "Applied",
+        },
+        db_path=db_path,
+    )
+    create_application(
+        {
+            "company": "HUMANOO",
+            "role": "Junior QA Engineer",
+            "application_date": "2026-04-29",
+            "status": "Applied",
+        },
+        db_path=db_path,
+    )
+
+    preview = preview_application_sync(
+        [
+            {
+                "company": "SAP",
+                "role": "QA Engineer",
+                "application_date": "2026-04-30",
+                "status": "Rejected",
+                "rejection_reason": "No interview",
+            },
+            {
+                "company": "HUMANOO",
+                "role": "Junior QA Engineer",
+                "application_date": "2026-04-29",
+                "status": "Applied",
+            },
+            {
+                "company": "DILAX",
+                "role": "Student Assistant Software Testing",
+                "application_date": "2026-04-29",
+                "status": "Applied",
+            },
+        ],
+        db_path=db_path,
+    )
+
+    assert preview.created == 1
+    assert preview.updated == 1
+    assert preview.unchanged == 1
+    assert preview.skipped == 0
+
+    updated_row = next(row for row in preview.rows if row.action == "Updated")
+    assert updated_row.company == "SAP"
+    assert {change.field for change in updated_row.field_changes} >= {"status", "rejection_reason"}
+    assert all(application["company"] != "DILAX" for application in get_applications(db_path))
 
 
 def test_deduplicate_applications_keeps_one_record(tmp_path: Path) -> None:
