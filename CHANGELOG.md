@@ -8,7 +8,9 @@ matching section, GitHub generates release notes automatically.
 
 ## [Unreleased]
 
-No unreleased changes.
+### Added
+
+- Runtime validation for email parser, reminder, and job-post configuration files.
 
 ## [v0.2.0] - 2026-05-16
 
