@@ -8,9 +8,25 @@ matching section, GitHub generates release notes automatically.
 
 ## [Unreleased]
 
+## [v0.2.1] - 2026-05-17
+
 ### Added
 
+- CSV import preview with created, updated, unchanged, skipped, and field-overwrite details before writing to SQLite.
+- Backup downloads for application CSV data, the activity log, and the local SQLite database.
+- Pending Actions queue controls for marking reminders done, snoozing by 3 or 7 days, and opening the related application.
+- Project-level `AGENTS.md` instructions for keeping future changes small, reviewable, and testable.
+
+### Changed
+
+- Overview now defaults to the active pipeline while keeping closed applications available behind a toggle.
+- Email Assistant recommendations can be manually reviewed and adjusted before applying status, next-action, follow-up, and rejection-reason updates.
 - Runtime validation for email parser, reminder, and job-post configuration files.
+- README documentation now includes `job_post_rules.json` in the configurable rules section.
+
+### Fixed
+
+- Calendar export date range defaults now pass valid Streamlit date values.
 
 ## [v0.2.0] - 2026-05-16
 
