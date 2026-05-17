@@ -44,6 +44,13 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Local credential files and OAuth tokens are ignored by Git.
 - Sample data is synthetic and safe for public demo use.
 
+## Known Limitations
+
+- Email classification is rule-based and may miss unusual recruiting messages.
+- Gmail sync is local-only and is not available in the hosted demo.
+- The app is designed for individual job-search workflows, not multi-user teams.
+- Calendar integration is currently export-based via `.ics`, not two-way Google Calendar sync.
+
 ## Features
 
 - Track companies, roles, locations, application dates, links, contacts, notes, rejection reasons, and status.
