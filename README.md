@@ -1,6 +1,7 @@
 # CareerOps Tracker
 
 [![Python Tests](https://github.com/zqybw98/careerops-tracker/actions/workflows/tests.yml/badge.svg)](https://github.com/zqybw98/careerops-tracker/actions/workflows/tests.yml)
+[![Coverage](https://img.shields.io/badge/coverage-pytest--cov-blue)](#testing-and-coverage)
 
 [Live Demo](https://careerops-tracker.streamlit.app/)
 
@@ -20,7 +21,7 @@ It demonstrates:
 - SQLite persistence and migrations
 - Rule-based explainable email classification
 - Streamlit product UI
-- pytest, ruff, mypy, and GitHub Actions
+- pytest + coverage, ruff, mypy, and GitHub Actions
 
 ## Live Demo
 
@@ -232,11 +233,23 @@ streamlit run app.py
 Optional: set `CAREEROPS_DB_PATH` before running Streamlit if you want a separate
 local database for demos, screenshots, or experiments.
 
+## Testing and Coverage
+
 Run tests:
 
 ```bash
-pytest
+python -m pytest
 ```
+
+Run tests with coverage:
+
+```bash
+python -m pytest --cov=src --cov-report=term-missing
+```
+
+The project includes regression tests for classification, parsing, reminders,
+CSV import, database migrations, analytics, Gmail preview behavior, job-post
+intake, and workflow services.
 
 Run quality checks locally:
 
@@ -244,7 +257,7 @@ Run quality checks locally:
 python -m ruff check .
 python -m ruff format --check .
 python -m mypy src
-python -m pytest
+python -m pytest --cov=src --cov-report=term-missing
 ```
 
 ## Engineering Notes
