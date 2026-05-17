@@ -36,6 +36,14 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 5. Review the suggested status update, match confidence, and next action.
 6. Check the dashboard analytics and pending reminders.
 
+## Privacy and Data Safety
+
+- The core app is local-first and stores application data in SQLite.
+- The hosted demo does not connect to any real Gmail account.
+- Gmail sync is optional, local-only, and uses read-only OAuth.
+- Local credential files and OAuth tokens are ignored by Git.
+- Sample data is synthetic and safe for public demo use.
+
 ## Features
 
 - Track companies, roles, locations, application dates, links, contacts, notes, rejection reasons, and status.
