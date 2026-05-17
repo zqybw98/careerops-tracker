@@ -187,6 +187,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   `-- sample_emails.txt
 `-- docs/
     |-- architecture.md
+    |-- design_decisions.md
     |-- deployment.md
     `-- screenshots/
         |-- applications.png
@@ -245,6 +246,12 @@ python -m ruff format --check .
 python -m mypy src
 python -m pytest
 ```
+
+## Engineering Notes
+
+- [Architecture overview](docs/architecture.md)
+- [Design decisions](docs/design_decisions.md)
+- [Deployment checklist](docs/deployment.md)
 
 ## Deployment
 
