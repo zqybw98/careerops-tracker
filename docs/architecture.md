@@ -48,7 +48,7 @@ area to the modules that implement it.
 | Feature area | User-facing capability | Main modules |
 | --- | --- | --- |
 | Application tracking | Track company, role, location, dates, source links, contacts, notes, rejection reasons, statuses, next actions, searchable filters, stale-only views, and bulk maintenance actions. | `app.py`, `src/application_filters.py`, `src/database.py`, `src/models.py` |
-| Contact CRM | Derive recruiter, hiring-manager, referral, source-channel, follow-up, and linked-application views from existing application records and activity events. | `app.py`, `src/contacts.py`, `src/database.py` |
+| Contact CRM | Derive recruiter, hiring-manager, referral, source-channel, follow-up, and linked-application views from existing application records and activity events. | `src/ui/contacts_page.py`, `src/contacts.py`, `src/database.py` |
 | Import/export | Import English or Chinese CSV files, re-import updated files without duplicates, export records, load demo data, and clean older duplicate rows. | `src/ui/data_settings_page.py`, `src/csv_importer.py`, `src/demo_data.py`, `src/database.py` |
 | Calendar export | Export interview, assessment, offer follow-up, and follow-up dates as `.ics` files or copyable text blocks without calendar OAuth. | `src/ui/data_settings_page.py`, `src/calendar_export.py` |
 | Dashboard and editing | View pipeline metrics, status charts, pending actions, recent applications, decision analytics, Germany-specific source tagging, funnel diagnostics, follow-up outcomes, and inline-edit key fields. | `src/dashboard.py`, `src/analytics.py`, `src/reminder_engine.py`, `app.py` |
@@ -64,7 +64,7 @@ area to the modules that implement it.
 
 | Component | Responsibility |
 | --- | --- |
-| `app.py` | Streamlit app entry point, global styling, sidebar routing, Overview, Applications, and Contacts workspaces. Business workflows are delegated to services and page modules. |
+| `app.py` | Streamlit app entry point, global styling, workspace routing, and the remaining Overview and Applications workspaces. Business workflows are delegated to services and page modules. |
 | `config/` | JSON rule configuration for email classification, email parsing, job-post intake, matching thresholds, and reminder behavior. |
 | `migrations/` | Ordered SQLite schema migrations applied at startup and tracked in `schema_version`. |
 | `src/action_recommender.py` | Converts classified emails and extracted context into workflow decisions, prioritized next actions, follow-up dates, rationales, and suggested template types. |
@@ -87,8 +87,11 @@ area to the modules that implement it.
 | `src/reminder_engine.py` | Generates follow-up, interview, assessment, stale-application, and saved-role reminders. |
 | `src/services/email_workflow.py` | Orchestrates email classification, extracted context, application matching, workflow recommendations, note generation, and Gmail preview application. |
 | `src/services/job_post_workflow.py` | Converts job-post extraction results into Saved application payloads and traceable notes. |
+| `src/ui/components.py` | Shared Streamlit page helpers used across workspace modules. |
+| `src/ui/contacts_page.py` | Streamlit page module for the contact-centric mini CRM workspace. |
 | `src/ui/email_assistant_page.py` | Streamlit page module for Job Post Intake, email-to-application updates, template generation, and Gmail preview tools. |
 | `src/ui/data_settings_page.py` | Streamlit page module for demo data loading, CSV import/export, duplicate cleanup, and `.ics` calendar export. |
+| `src/ui/sidebar.py` | Sidebar workspace navigation and high-level workspace metrics. |
 | `src/demo_data.py` | Loads portfolio-friendly sample data from `samples/sample_applications.csv` without duplicates. |
 | `tests/` | Regression tests for database persistence, config loading, CSV import, email rules, job-post intake, workflow services, analytics, reminders, Gmail preview behavior, and demo data loading. |
 | `pyproject.toml` | Central configuration for Ruff linting, Ruff formatting, and mypy type checking. |

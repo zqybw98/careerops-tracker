@@ -157,8 +157,11 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |   `-- job_post_workflow.py
 |   `-- ui/
 |       |-- __init__.py
+|       |-- components.py
+|       |-- contacts_page.py
 |       |-- data_settings_page.py
-|       `-- email_assistant_page.py
+|       |-- email_assistant_page.py
+|       `-- sidebar.py
 |-- tests/
 |   |-- test_action_recommender.py
 |   |-- test_analytics.py

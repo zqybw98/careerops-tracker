@@ -20,7 +20,6 @@ from src.analytics import (
     build_time_to_first_response_by_source,
 )
 from src.application_filters import build_bulk_update_payload, filter_applications
-from src.contacts import build_contact_records
 from src.dashboard import build_summary, filter_dashboard_applications
 from src.database import (
     create_application,
@@ -34,8 +33,11 @@ from src.database import (
 from src.models import STATUS_OPTIONS
 from src.reminder_actions import PendingAction, build_pending_action_payload
 from src.reminder_engine import generate_reminders
+from src.ui.components import render_app_header, with_display_sequence
+from src.ui.contacts_page import render_contacts
 from src.ui.data_settings_page import render_data_tools
 from src.ui.email_assistant_page import render_assistant_workspace
+from src.ui.sidebar import render_sidebar_navigation
 
 DASHBOARD_EDITOR_COLUMNS = [
     "#",
@@ -57,8 +59,6 @@ DASHBOARD_EDITABLE_COLUMNS = [
     "next_action",
     "follow_up_date",
 ]
-
-WORKSPACE_OPTIONS = ["Overview", "Applications", "Contacts", "Email Assistant", "Data & Settings"]
 
 st.set_page_config(
     page_title="CareerOps Tracker",
@@ -125,30 +125,6 @@ def main() -> None:
         render_data_tools(applications)
 
 
-def render_sidebar_navigation(applications: list[dict], reminders: list[dict]) -> str:
-    with st.sidebar:
-        st.title("CareerOps")
-        st.caption("Job search operations tracker")
-        if st.session_state.get("workspace_nav") == "Assistant":
-            st.session_state["workspace_nav"] = "Email Assistant"
-        workspace = st.radio(
-            "Workspace",
-            WORKSPACE_OPTIONS,
-            key="workspace_nav",
-            label_visibility="collapsed",
-        )
-        st.divider()
-        st.metric("Applications", len(applications))
-        st.metric("Pending actions", len(reminders))
-        st.caption("Local data stays in SQLite. Gmail sync is optional and read-only.")
-    return workspace
-
-
-def render_app_header(workspace: str) -> None:
-    st.title(workspace)
-    st.caption("Job application tracking, email classification, and follow-up reminders.")
-
-
 def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
     include_closed = st.toggle(
         "Include closed applications",
@@ -200,7 +176,7 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
         use_container_width=True,
         on_click=_go_to_applications_workspace,
     )
-    display_df = _with_display_sequence(df)
+    display_df = with_display_sequence(df)
     render_dashboard_recent_editor(visible_applications, display_df)
     st.divider()
 
@@ -523,110 +499,6 @@ def _filter_reminders_for_applications(reminders: list[dict], applications: list
     return [reminder for reminder in reminders if str(reminder.get("application_id")) in application_ids]
 
 
-def render_contacts(applications: list[dict]) -> None:
-    contacts = build_contact_records(applications, get_application_events())
-
-    if not contacts:
-        st.info("Add contacts, source links, or recruiter emails to applications to build the contact view.")
-        return
-
-    total_contacts = len(contacts)
-    recruiter_contacts = sum(1 for contact in contacts if contact["contact_type"] == "Recruiter")
-    follow_up_contacts = sum(1 for contact in contacts if contact["follow_up_status"] in {"Due", "Needed", "Planned"})
-    represented_applications = sum(int(contact["applications"]) for contact in contacts)
-
-    metric_columns = st.columns(4)
-    metric_columns[0].metric("Contacts", total_contacts)
-    metric_columns[1].metric("Recruiters", recruiter_contacts)
-    metric_columns[2].metric("With follow-up", follow_up_contacts)
-    metric_columns[3].metric("Linked applications", represented_applications)
-
-    filter_col_a, filter_col_b, filter_col_c, filter_col_d = st.columns([1.4, 1, 1, 0.8])
-    search_query = filter_col_a.text_input("Search contact/company/application", key="contact_search")
-    type_options = sorted({str(contact["contact_type"]) for contact in contacts})
-    channel_options = sorted({str(contact["channel"]) for contact in contacts})
-    selected_types = filter_col_b.multiselect(
-        "Contact type",
-        type_options,
-        default=type_options,
-        key="contact_type_filter",
-    )
-    selected_channels = filter_col_c.multiselect(
-        "Channel",
-        channel_options,
-        default=channel_options,
-        key="contact_channel_filter",
-    )
-    follow_up_only = filter_col_d.checkbox("Follow-up only", key="contact_follow_up_filter")
-
-    filtered_contacts = _filter_contact_records(
-        contacts,
-        search_query=search_query,
-        selected_types=selected_types,
-        selected_channels=selected_channels,
-        follow_up_only=follow_up_only,
-    )
-    st.caption(f"Showing {len(filtered_contacts)} of {len(contacts)} contact(s).")
-
-    if not filtered_contacts:
-        st.info("No contacts match the current filters.")
-        return
-
-    contact_df = pd.DataFrame(filtered_contacts)
-    st.dataframe(
-        contact_df[
-            [
-                "contact",
-                "contact_type",
-                "channel",
-                "companies",
-                "applications",
-                "open_applications",
-                "follow_up_status",
-                "next_follow_up_date",
-                "last_contact_at",
-            ]
-        ],
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    label_map = {
-        f"{contact['contact']} - {contact['companies']} ({contact['applications']} application(s))": contact
-        for contact in filtered_contacts
-    }
-    selected_label = st.selectbox("Select contact to inspect", list(label_map.keys()))
-    selected_contact = label_map[selected_label]
-
-    detail_col_a, detail_col_b, detail_col_c = st.columns(3)
-    detail_col_a.metric("Type", selected_contact["contact_type"])
-    detail_col_b.metric("Channel", selected_contact["channel"])
-    detail_col_c.metric("Follow-up", selected_contact["follow_up_status"])
-
-    st.subheader("Linked Applications")
-    linked_ids = set(selected_contact["application_ids"])
-    linked_applications = [application for application in applications if int(application["id"]) in linked_ids]
-    linked_df = _with_display_sequence(pd.DataFrame(linked_applications))
-    st.dataframe(
-        linked_df[
-            [
-                "#",
-                "company",
-                "role",
-                "location",
-                "application_date",
-                "status",
-                "next_action",
-                "follow_up_date",
-            ]
-        ],
-        use_container_width=True,
-        hide_index=True,
-    )
-
-    st.caption(selected_contact["linked_applications"])
-
-
 def render_dashboard_recent_editor(applications: list[dict], display_df: pd.DataFrame) -> None:
     editor_df = display_df[["id"] + DASHBOARD_EDITOR_COLUMNS].copy()
     edited_df = st.data_editor(
@@ -758,7 +630,7 @@ def render_applications(applications: list[dict]) -> None:
         st.info("No applications match the current filters.")
         return
 
-    filtered_df = _with_display_sequence(pd.DataFrame(filtered_applications))
+    filtered_df = with_display_sequence(pd.DataFrame(filtered_applications))
     visible_columns = [
         "#",
         "company",
@@ -939,7 +811,7 @@ def render_activity_log(application_id: int) -> None:
 
 
 def _application_label_id_map(applications: list[dict]) -> dict[str, int]:
-    display_df = _with_display_sequence(pd.DataFrame(applications))
+    display_df = with_display_sequence(pd.DataFrame(applications))
     labels: dict[str, int] = {}
     for row in display_df.to_dict(orient="records"):
         label = f"{row['#']} - {row['company']} - {row['role']}"
@@ -961,38 +833,6 @@ def _date_range_bounds(value: object) -> tuple[date | None, date | None]:
     if isinstance(value, date):
         return value, value
     return None, None
-
-
-def _filter_contact_records(
-    contacts: list[dict],
-    *,
-    search_query: str,
-    selected_types: list[str],
-    selected_channels: list[str],
-    follow_up_only: bool,
-) -> list[dict]:
-    normalized_query = " ".join(search_query.casefold().split())
-    type_filter = set(selected_types)
-    channel_filter = set(selected_channels)
-    filtered = []
-
-    for contact in contacts:
-        if type_filter and str(contact["contact_type"]) not in type_filter:
-            continue
-        if channel_filter and str(contact["channel"]) not in channel_filter:
-            continue
-        if follow_up_only and contact["follow_up_status"] == "None":
-            continue
-        if normalized_query:
-            haystack = " ".join(
-                str(contact.get(field, ""))
-                for field in ["contact", "email", "companies", "linked_applications", "contact_type", "channel"]
-            ).casefold()
-            if normalized_query not in haystack:
-                continue
-        filtered.append(contact)
-
-    return filtered
 
 
 def _filter_calendar_items(
@@ -1053,19 +893,6 @@ def _option_index(options: list[str], value: str) -> int:
         return options.index(value)
     except ValueError:
         return 0
-
-
-def _with_display_sequence(df: pd.DataFrame) -> pd.DataFrame:
-    if df.empty:
-        return df
-
-    sorted_df = df.sort_values(
-        by=["application_date", "company", "role", "id"],
-        ascending=[False, True, True, False],
-        na_position="last",
-    ).reset_index(drop=True)
-    sorted_df.insert(0, "#", range(1, len(sorted_df) + 1))
-    return sorted_df
 
 
 def _save_dashboard_editor_changes(
