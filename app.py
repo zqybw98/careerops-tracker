@@ -20,6 +20,7 @@ from src.analytics import (
     build_time_to_first_response_by_source,
 )
 from src.application_filters import build_bulk_update_payload, filter_applications
+from src.application_note_parser import parse_application_note
 from src.dashboard import build_summary, filter_dashboard_applications
 from src.database import (
     create_application,
@@ -536,28 +537,44 @@ def render_dashboard_recent_editor(applications: list[dict], display_df: pd.Data
 
 def render_applications(applications: list[dict]) -> None:
     st.subheader("Add Application")
+    _render_application_note_intake()
+    prefill = st.session_state.get("add_application_prefill", {})
+    prefill_fields = prefill.get("fields", {}) if isinstance(prefill, dict) else {}
+    prefill_notes = str(prefill.get("notes", "")) if isinstance(prefill, dict) else ""
+
     with st.form("add_application_form", clear_on_submit=True):
         col_a, col_b, col_c = st.columns(3)
-        company = col_a.text_input("Company")
-        role = col_b.text_input("Role")
-        location = col_c.text_input("Location", value="Germany")
+        company = col_a.text_input("Company", value=str(prefill_fields.get("company", "")))
+        role = col_b.text_input("Role", value=str(prefill_fields.get("role", "")))
+        location = col_c.text_input("Location", value=str(prefill_fields.get("location", "Germany")))
 
         col_d, col_e, col_f = st.columns(3)
-        application_date = col_d.date_input("Application date", value=date.today())
-        status = col_e.selectbox("Status", STATUS_OPTIONS, index=STATUS_OPTIONS.index("Applied"))
-        has_follow_up = col_f.checkbox("Set follow-up date")
+        application_date = col_d.date_input(
+            "Application date",
+            value=_text_to_date(prefill_fields.get("application_date")) or date.today(),
+        )
+        status = col_e.selectbox(
+            "Status",
+            STATUS_OPTIONS,
+            index=_option_index(STATUS_OPTIONS, str(prefill_fields.get("status", "Applied"))),
+        )
+        has_follow_up = col_f.checkbox("Set follow-up date", value=bool(prefill_fields.get("follow_up_date")))
         follow_up_date = ""
         if has_follow_up:
-            follow_up_date = col_f.date_input("Follow-up date", value=date.today() + timedelta(days=7))
+            follow_up_date = col_f.date_input(
+                "Follow-up date",
+                value=_text_to_date(prefill_fields.get("follow_up_date")) or date.today() + timedelta(days=7),
+            )
 
-        source_link = st.text_input("Source link")
-        contact = st.text_input("Contact")
-        next_action = st.text_input("Next action")
+        source_link = st.text_input("Source link", value=str(prefill_fields.get("source_link", "")))
+        contact = st.text_input("Contact", value=str(prefill_fields.get("contact", "")))
+        next_action = st.text_input("Next action", value=str(prefill_fields.get("next_action", "")))
         rejection_reason = st.text_area(
             "Rejection reason",
+            value=str(prefill_fields.get("rejection_reason", "")),
             placeholder="Optional. Useful when status is Rejected, for example after HR screen or position closed.",
         )
-        notes = st.text_area("Notes")
+        notes = st.text_area("Notes", value=prefill_notes)
 
         submitted = st.form_submit_button("Add application")
         if submitted:
@@ -580,6 +597,7 @@ def render_applications(applications: list[dict]) -> None:
                     },
                     source="manual",
                 )
+                st.session_state.pop("add_application_prefill", None)
                 st.success("Application added.")
                 st.rerun()
 
@@ -789,6 +807,58 @@ def render_applications(applications: list[dict]) -> None:
 
     st.subheader("Activity Log")
     render_activity_log(selected_id)
+
+
+def _render_application_note_intake() -> None:
+    stored_message = st.session_state.pop("application_note_prefill_message", None)
+    if stored_message:
+        st.success(stored_message)
+
+    with st.expander("Auto-fill from structured application note"):
+        st.caption(
+            "Paste a short note with labels such as Datum, Company, Position, Location, Status, CV used, "
+            "Cover letter, and Next step. Review the form before adding the record."
+        )
+        note_text = st.text_area(
+            "Structured application note",
+            key="structured_application_note_text",
+            height=180,
+            placeholder=(
+                "Datum: 17.05.2026\n"
+                "Company: EY / Ernst & Young\n"
+                "Position: SAP Innovation Engineer (w/m/d)\n"
+                "Location: Berlin\n"
+                "Status: Applied / Bewerbung abgeschickt\n"
+                "CV used: EY SAP Innovation Engineer 2-page German CV\n"
+                "Cover letter: EY SAP Innovation Engineer German Anschreiben\n"
+                "Next step: Wait for confirmation email; follow up after 5-7 working days."
+            ),
+        )
+        action_col, clear_col = st.columns([1, 4])
+        if action_col.button("Extract into form", key="extract_structured_application_note"):
+            parsed = parse_application_note(note_text)
+            if not parsed["fields"]:
+                st.warning("No structured fields found. Use lines like `Company: SAP` or `Position: QA Engineer`.")
+            else:
+                st.session_state["add_application_prefill"] = parsed
+                st.session_state["application_note_prefill_message"] = (
+                    f"Extracted {len(parsed['fields'])} field(s). Review the Add Application form before saving."
+                )
+                st.rerun()
+        if clear_col.button("Clear extracted prefill", key="clear_structured_application_prefill"):
+            st.session_state.pop("add_application_prefill", None)
+            st.session_state.pop("application_note_prefill_message", None)
+            st.rerun()
+
+        current_prefill = st.session_state.get("add_application_prefill")
+        if isinstance(current_prefill, dict) and current_prefill.get("fields"):
+            st.caption(current_prefill.get("summary", "Extracted fields are ready for review."))
+            preview_rows = [
+                {"Field": field.replace("_", " "), "Value": value}
+                for field, value in current_prefill["fields"].items()
+                if value
+            ]
+            st.dataframe(preview_rows, use_container_width=True, hide_index=True)
 
 
 def render_activity_log(application_id: int) -> None:

@@ -58,6 +58,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 - Extract company, role, location, contact, source link, deadlines, interview dates, and rejection reasons from pasted recruiting emails.
 - Recognize Germany-specific rejection patterns such as German-language requirements, visa/work authorization, location constraints, filled roles, and candidate-fit mismatches.
 - Draft Saved application records from pasted job descriptions or job URLs by extracting company, role, location, source link, contact, and deadline hints.
+- Paste structured application notes into Applications to auto-fill the Add Application form before saving.
 - Suggest application status updates from email classification results, then let the user adjust the matched record, status, next action, follow-up date, and rejection reason before applying.
 - Decide the recommended workflow action: update status, save a task, confirm a match, close a rejection, or create a new record.
 - Generate an operation summary that explains the classification, target record, match confidence, status action, and next step.
