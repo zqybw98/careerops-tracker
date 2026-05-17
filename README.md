@@ -8,6 +8,20 @@ A local-first job search operations tracker with explainable recruiting-email wo
 
 CareerOps Tracker helps job seekers turn applications, recruiting emails, follow-ups, contacts, and job posts into a structured workflow that can be reviewed, updated, and explained.
 
+## 30-second summary
+
+CareerOps Tracker is a local-first Streamlit tool for managing job applications,
+classifying recruiting emails, generating follow-up actions, and tracking
+job-search analytics.
+
+It demonstrates:
+
+- Python workflow automation
+- SQLite persistence and migrations
+- Rule-based explainable email classification
+- Streamlit product UI
+- pytest, ruff, mypy, and GitHub Actions
+
 ## Live Demo
 
 Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://careerops-tracker.streamlit.app/)
