@@ -26,6 +26,15 @@ It demonstrates:
 
 Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://careerops-tracker.streamlit.app/)
 
+## Demo Walkthrough
+
+1. Open the Live Demo.
+2. Click `Load sample applications` in Data & Settings.
+3. Go to Email Assistant.
+4. Paste a sample recruiting email from `samples/sample_emails.txt`.
+5. Review the suggested status update, match confidence, and next action.
+6. Check the dashboard analytics and pending reminders.
+
 ## Features
 
 - Track companies, roles, locations, application dates, links, contacts, notes, rejection reasons, and status.
