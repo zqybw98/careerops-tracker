@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from src.models import normalize_status
+
 MIN_FEEDBACK_SIMILARITY = 0.45
 
 TOKEN_STOP_WORDS = {
@@ -84,7 +86,7 @@ def apply_feedback_to_classification(
     if corrected_category:
         updated["category"] = corrected_category
     if corrected_status:
-        updated["suggested_status"] = corrected_status
+        updated["suggested_status"] = normalize_status(corrected_status)
     updated["confidence"] = max(float(updated.get("confidence") or 0), 0.96)
     updated["matched_keywords"] = _feedback_keywords(updated)
     updated["feedback_override"] = True

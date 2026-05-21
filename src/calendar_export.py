@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from src.models import CLOSED_STATUSES
+from src.models import CLOSED_STATUSES, normalize_status
 
 
 @dataclass(frozen=True)
@@ -27,11 +27,12 @@ def build_calendar_items(applications: list[dict[str, Any]]) -> list[CalendarIte
         if event_date is None:
             continue
 
-        status = _text(application.get("status")) or "Applied"
+        raw_status = _text(application.get("status")) or "Applied"
+        status = normalize_status(raw_status)
         if status in CLOSED_STATUSES and status != "Offer":
             continue
 
-        event_type = _calendar_event_type(status)
+        event_type = _calendar_event_type(status, raw_status, _text(application.get("next_action")))
         items.append(
             CalendarItem(
                 application_id=_application_id(application),
@@ -121,10 +122,11 @@ def _ics_event_lines(item: CalendarItem, timestamp: str) -> list[str]:
     ]
 
 
-def _calendar_event_type(status: str) -> str:
-    if status == "Interview Scheduled":
+def _calendar_event_type(status: str, raw_status: str = "", next_action: str = "") -> str:
+    context = f"{raw_status} {next_action}".casefold()
+    if status == "Interview / Assessment" and any(word in context for word in ["interview", "gespräch", "面试"]):
         return "Interview"
-    if status == "Assessment":
+    if status == "Interview / Assessment":
         return "Assessment"
     if status == "Offer":
         return "Offer follow-up"

@@ -10,6 +10,11 @@
       "message": "Follow-up date is due.",
       "reason": "follow_up_date"
     },
+    "action_needed": {
+      "priority": "High",
+      "message": "Action is required today.",
+      "reason": "action_needed"
+    },
     "interview_preparation": {
       "priority": "High",
       "message": "Prepare interview notes and confirm logistics.",
@@ -28,7 +33,7 @@
       "minimum_days_open": 14,
       "statuses": [
         "Applied",
-        "Confirmation Received"
+        "Waiting"
       ]
     },
     "weekly_follow_up": {
@@ -38,7 +43,7 @@
       "minimum_days_open": 7,
       "statuses": [
         "Applied",
-        "Confirmation Received"
+        "Waiting"
       ]
     },
     "saved_role": {

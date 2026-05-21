@@ -21,7 +21,7 @@ def test_extracts_structured_english_job_post() -> None:
     assert details["source_link"] == "https://careers.siemens.com/jobs/qa-automation-working-student"
     assert details["contact"] == "recruiter@siemens.com"
     assert details["deadline"] == "2026-05-30"
-    assert analysis["status"] == "Saved"
+    assert analysis["status"] == "Applied"
     assert analysis["follow_up_date"] == "2026-05-30"
     assert "apply before 2026-05-30" in analysis["next_action"]
 

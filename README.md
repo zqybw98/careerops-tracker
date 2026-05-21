@@ -140,7 +140,8 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- 001_init.sql
 |   |-- 002_add_rejection_reason.sql
 |   |-- 003_add_email_feedback.sql
-|   `-- 004_add_lookup_indexes.sql
+|   |-- 004_add_lookup_indexes.sql
+|   `-- 005_simplify_daily_statuses.sql
 |-- .streamlit/
 |   `-- config.toml
 |-- .github/
@@ -156,6 +157,7 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
 |   |-- config_loader.py
 |   |-- contacts.py
 |   |-- database.py
+|   |-- duplicates.py
 |   |-- csv_importer.py
 |   |-- dashboard.py
 |   |-- demo_data.py
@@ -212,6 +214,29 @@ Open the hosted Streamlit demo: [careerops-tracker.streamlit.app](https://career
         |-- dashboard.png
         `-- email-assistant.png
 ```
+
+## Quick Start on Windows
+
+First-time setup: double-click `setup.bat`.
+
+Daily start: double-click `start.bat`.
+
+VS Code start: press `Ctrl+Shift+B` and run `Run CareerOps Tracker`.
+
+Manual fallback:
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
+## Daily Workflow
+
+1. Open Overview and start from the Action Center.
+2. Check overdue, today, and this-week actions.
+3. Paste a new recruiting email into the Overview email shortcut.
+4. Review the suggested update, matched application, confidence gate, and next action.
+5. Apply the safe update or open the full Email Assistant for review.
+6. Use Quick Update for fast status, follow-up, next-action, and note changes.
 
 ## Getting Started
 

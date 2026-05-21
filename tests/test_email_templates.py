@@ -6,7 +6,7 @@ from src.email_templates import TEMPLATE_LANGUAGES, generate_email_template, sug
 def test_suggests_template_type_from_status() -> None:
     assert suggest_template_type({"status": "Interview Scheduled"}) == "Interview Thank-you Email"
     assert suggest_template_type({"status": "Rejected"}) == "Rejection Acknowledgement Email"
-    assert suggest_template_type({"status": "No Response"}) == "Recruiter Outreach Email"
+    assert suggest_template_type({"status": "Action Needed"}) == "Recruiter Outreach Email"
     assert suggest_template_type({"status": "Applied"}) == "Follow-up Email"
 
 

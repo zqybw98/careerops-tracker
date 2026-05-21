@@ -5,7 +5,7 @@ from datetime import date
 from typing import Any
 from urllib.parse import urlparse
 
-from src.models import STATUS_OPTIONS
+from src.models import STATUS_OPTIONS, normalize_status
 
 FIELD_ALIASES = {
     "application_date": {
@@ -100,10 +100,10 @@ NOTE_ALIASES = {
 
 STATUS_PATTERNS = [
     ("Rejected", ["rejected", "rejection", "absage", "abgelehnt", "leider", "拒绝", "未通过"]),
-    ("Interview Scheduled", ["interview", "vorstellungsgespräch", "gespräch", "面试"]),
-    ("Assessment", ["assessment", "coding test", "testaufgabe", "aufgabe", "测评", "笔试"]),
-    ("Offer", ["offer", "angebot", "录用", "offer"]),
-    ("Confirmation Received", ["confirmation", "bestätigung", "eingangsbestätigung", "确认邮件"]),
+    ("Interview / Assessment", ["interview", "vorstellungsgespräch", "gespräch", "面试"]),
+    ("Interview / Assessment", ["assessment", "coding test", "testaufgabe", "aufgabe", "测评", "笔试"]),
+    ("Action Needed", ["offer", "angebot", "录用", "offer"]),
+    ("Waiting", ["confirmation", "bestätigung", "eingangsbestätigung", "确认邮件"]),
     (
         "Applied",
         [
@@ -117,9 +117,9 @@ STATUS_PATTERNS = [
             "已经成功提交",
         ],
     ),
-    ("Follow-up Needed", ["follow-up needed", "follow up needed", "needs follow-up", "需要跟进"]),
-    ("No Response", ["no response", "keine rückmeldung", "keine rueckmeldung", "无回复"]),
-    ("Saved", ["saved", "gespeichert", "收藏", "已保存"]),
+    ("Action Needed", ["follow-up needed", "follow up needed", "needs follow-up", "需要跟进"]),
+    ("Waiting", ["no response", "keine rückmeldung", "keine rueckmeldung", "无回复"]),
+    ("Applied", ["saved", "gespeichert", "收藏", "已保存"]),
 ]
 
 
@@ -209,7 +209,7 @@ def _normalize_status(value: str) -> str:
     for status, patterns in STATUS_PATTERNS:
         if any(_normalize_text(pattern) in normalized for pattern in patterns):
             return status
-    return "Applied"
+    return normalize_status(value)
 
 
 def _field_for_label(normalized_label: str) -> str:

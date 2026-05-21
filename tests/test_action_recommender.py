@@ -7,7 +7,7 @@ def test_interview_action_uses_extracted_interview_date() -> None:
     recommendation = build_next_action_recommendation(
         {
             "category": "Interview Invitation",
-            "suggested_status": "Interview Scheduled",
+            "suggested_status": "Interview / Assessment",
             "suggested_follow_up_days": 1,
         },
         {
@@ -28,7 +28,7 @@ def test_assessment_action_prefers_deadline() -> None:
     recommendation = build_next_action_recommendation(
         {
             "category": "Assessment / Coding Test",
-            "suggested_status": "Assessment",
+            "suggested_status": "Interview / Assessment",
             "suggested_follow_up_days": 2,
         },
         {
@@ -61,7 +61,8 @@ def test_rejection_action_captures_reason_without_follow_up() -> None:
 
     assert recommendation["priority"] == "Medium"
     assert recommendation["follow_up_date"] == ""
-    assert "Other candidates were selected." in recommendation["next_action"]
+    assert recommendation["next_action"] == "No action"
+    assert "Other candidates were selected." in recommendation["rationale"]
     assert recommendation["template_type"] == "Rejection Acknowledgement Email"
 
 
@@ -69,7 +70,7 @@ def test_confirmation_action_schedules_follow_up_from_relative_rule() -> None:
     recommendation = build_next_action_recommendation(
         {
             "category": "Application Confirmation",
-            "suggested_status": "Confirmation Received",
+            "suggested_status": "Waiting",
             "suggested_follow_up_days": 7,
         },
         {"company": "Nexus", "role": "Softwaretester"},
@@ -78,7 +79,7 @@ def test_confirmation_action_schedules_follow_up_from_relative_rule() -> None:
 
     assert recommendation["priority"] == "Medium"
     assert recommendation["follow_up_date"] == "2026-05-18"
-    assert "follow up if there is no update" in recommendation["next_action"]
+    assert recommendation["next_action"] == "Wait"
 
 
 def test_workflow_decision_closes_rejected_application() -> None:
@@ -112,7 +113,7 @@ def test_workflow_decision_requires_confirmation_for_candidate_match() -> None:
     classification = {
         "category": "Application Confirmation",
         "confidence": 0.74,
-        "suggested_status": "Confirmation Received",
+        "suggested_status": "Waiting",
         "suggested_follow_up_days": 7,
     }
     recommendation = build_next_action_recommendation(
@@ -132,7 +133,7 @@ def test_workflow_decision_requires_confirmation_for_candidate_match() -> None:
 
     assert decision["operation"] == "Confirm match"
     assert decision["review_level"] == "Medium"
-    assert decision["status_action"] == "Applied -> Confirmation Received"
+    assert decision["status_action"] == "Applied -> Waiting"
     assert decision["status_update_allowed"] is True
 
 
@@ -166,7 +167,7 @@ def test_workflow_decision_can_create_application_from_email_context() -> None:
     classification = {
         "category": "Interview Invitation",
         "confidence": 0.86,
-        "suggested_status": "Interview Scheduled",
+        "suggested_status": "Interview / Assessment",
     }
     details = {"company": "Bosch", "role": "QA Intern"}
     recommendation = build_next_action_recommendation(classification, details, today=date(2026, 5, 11))
@@ -174,5 +175,5 @@ def test_workflow_decision_can_create_application_from_email_context() -> None:
     decision = build_workflow_decision(classification, details, recommendation)
 
     assert decision["operation"] == "Create application"
-    assert decision["status_action"] == "Create as Interview Scheduled"
+    assert decision["status_action"] == "Create as Interview / Assessment"
     assert decision["status_update_allowed"] is True

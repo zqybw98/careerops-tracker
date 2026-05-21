@@ -52,7 +52,7 @@ def test_classifies_interview_invitation() -> None:
     )
 
     assert result["category"] == "Interview Invitation"
-    assert result["suggested_status"] == "Interview Scheduled"
+    assert result["suggested_status"] == "Interview / Assessment"
 
 
 def test_classifies_application_confirmation() -> None:
@@ -62,7 +62,7 @@ def test_classifies_application_confirmation() -> None:
     )
 
     assert result["category"] == "Application Confirmation"
-    assert result["suggested_status"] == "Confirmation Received"
+    assert result["suggested_status"] == "Waiting"
 
 
 def test_classifies_german_rejection_email() -> None:
@@ -101,7 +101,7 @@ def test_classifies_chinese_interview_invitation() -> None:
     )
 
     assert result["category"] == "Interview Invitation"
-    assert result["suggested_status"] == "Interview Scheduled"
+    assert result["suggested_status"] == "Interview / Assessment"
 
 
 def test_classifies_chinese_application_confirmation() -> None:
@@ -111,7 +111,7 @@ def test_classifies_chinese_application_confirmation() -> None:
     )
 
     assert result["category"] == "Application Confirmation"
-    assert result["suggested_status"] == "Confirmation Received"
+    assert result["suggested_status"] == "Waiting"
 
 
 def test_unknown_email_returns_other() -> None:

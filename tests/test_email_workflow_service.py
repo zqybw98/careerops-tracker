@@ -36,7 +36,7 @@ def test_classifies_email_and_builds_workflow_context() -> None:
         workflow["match_candidates"],
     )
 
-    assert workflow["classification"]["suggested_status"] == "Interview Scheduled"
+    assert workflow["classification"]["suggested_status"] == "Interview / Assessment"
     assert context["workflow_decision"]["operation"] == "Prepare interview"
     assert "Operation summary:" in context["operation_summary"]["audit_note"]
 
@@ -45,7 +45,7 @@ def test_builds_initial_email_create_notes() -> None:
     classification = {
         "category": "Application Confirmation",
         "confidence": 0.85,
-        "suggested_status": "Confirmation Received",
+        "suggested_status": "Waiting",
         "suggested_follow_up_days": 7,
     }
     details = {"company": "SAP", "role": "QA Engineer"}
@@ -118,7 +118,7 @@ def test_apply_email_workflow_update_uses_reviewed_fields(tmp_path: Path) -> Non
             "company": "Amazon",
             "role": "Graduate Area Manager",
             "application_date": "2026-05-13",
-            "status": "Confirmation Received",
+            "status": "Waiting",
             "rejection_reason": "Old reason",
         },
         db_path=db_path,
@@ -165,7 +165,7 @@ def test_apply_email_workflow_update_uses_reviewed_fields(tmp_path: Path) -> Non
     updated = get_applications(db_path)[0]
 
     assert updated["status"] == "Rejected"
-    assert updated["next_action"] == "Archive the Amazon application and record lessons learned."
+    assert updated["next_action"] == "No action"
     assert updated["follow_up_date"] == ""
     assert updated["rejection_reason"] == "Other candidates were selected."
 
@@ -227,7 +227,7 @@ def test_manual_feedback_overrides_similar_future_email(tmp_path: Path) -> None:
         classification=workflow["classification"],
         details=workflow["details"],
         corrected_category="Interview Invitation",
-        corrected_status="Interview Scheduled",
+        corrected_status="Interview / Assessment",
         corrected_application_id=application_id,
         applications=applications,
         db_path=db_path,
@@ -237,6 +237,6 @@ def test_manual_feedback_overrides_similar_future_email(tmp_path: Path) -> None:
 
     assert corrected["classification"]["feedback_override"] is True
     assert corrected["classification"]["category"] == "Interview Invitation"
-    assert corrected["classification"]["suggested_status"] == "Interview Scheduled"
+    assert corrected["classification"]["suggested_status"] == "Interview / Assessment"
     assert corrected["match"]["application_id"] == application_id
     assert corrected["match"]["feedback_override"] is True

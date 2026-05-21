@@ -240,11 +240,11 @@ def _score_status_context(
     if status in CLOSED_STATUSES:
         return -3, ["closed application is less likely for this email"]
 
-    if intent == "interview" and status in {"Applied", "Confirmation Received", "Follow-up Needed"}:
+    if intent == "interview" and status in {"Applied", "Waiting", "Action Needed"}:
         return 2, ["interview email fits an active application"]
-    if intent == "assessment" and status in {"Applied", "Confirmation Received", "Follow-up Needed"}:
+    if intent == "assessment" and status in {"Applied", "Waiting", "Action Needed"}:
         return 2, ["assessment email fits an active application"]
-    if intent == "confirmation" and status in {"Saved", "Applied"}:
+    if intent == "confirmation" and status in {"Applied"}:
         return 1, ["confirmation email fits an early-stage application"]
     return 0, []
 

@@ -9,7 +9,7 @@ from src.models import APPLICATION_COLUMNS, CLOSED_STATUSES
 BulkAction = Literal["archive", "mark_no_response", "set_follow_up"]
 
 ARCHIVED_NEXT_ACTION = "Archived from active pipeline."
-NO_RESPONSE_NEXT_ACTION = "Marked as no response after review."
+NO_RESPONSE_NEXT_ACTION = "Wait"
 
 
 def filter_applications(
@@ -56,7 +56,7 @@ def filter_applications(
 def is_stale_application(application: dict[str, Any], *, today: date | None = None) -> bool:
     current_date = today or date.today()
     status = str(application.get("status", ""))
-    if status in CLOSED_STATUSES or status == "No Response":
+    if status in CLOSED_STATUSES:
         return False
 
     follow_up_date = parse_date(application.get("follow_up_date"))
@@ -82,13 +82,13 @@ def build_bulk_update_payload(
     payload = {column: application.get(column, "") for column in APPLICATION_COLUMNS}
 
     if action == "archive":
-        payload["status"] = "No Response"
+        payload["status"] = "Waiting"
         payload["next_action"] = ARCHIVED_NEXT_ACTION
         payload["follow_up_date"] = ""
         return payload
 
     if action == "mark_no_response":
-        payload["status"] = "No Response"
+        payload["status"] = "Waiting"
         payload["next_action"] = NO_RESPONSE_NEXT_ACTION
         payload["follow_up_date"] = ""
         return payload

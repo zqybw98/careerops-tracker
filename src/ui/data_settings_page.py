@@ -18,7 +18,6 @@ from src.database import (
     DEFAULT_DB_PATH,
     ApplicationFieldChange,
     ApplicationSyncPreview,
-    deduplicate_applications,
     get_application_events,
     preview_application_sync,
     sync_applications,
@@ -158,14 +157,10 @@ def render_data_tools(applications: list[dict]) -> None:
 
     if applications:
         with st.expander("Maintenance"):
-            st.caption("Use this after repeated CSV imports to remove duplicate company/role/date records.")
-            if st.button("Clean duplicate applications", key="data_clean_duplicates"):
-                removed = deduplicate_applications()
-                if removed:
-                    st.success(f"Removed {removed} duplicate records.")
-                else:
-                    st.info("No duplicate records found.")
-                st.rerun()
+            st.caption(
+                "Duplicate cleanup is intentionally manual now. Use Applications -> Check duplicates "
+                "to review likely duplicates without deleting records."
+            )
 
 
 def _render_import_preview(preview: ApplicationSyncPreview) -> None:

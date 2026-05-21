@@ -31,7 +31,7 @@ def test_imports_chinese_header_csv_rows() -> None:
     assert result.rows[0]["application_date"] == "2023-05-03"
     assert result.rows[0]["status"] == "Rejected"
     assert result.rows[0]["rejection_reason"] == "After HR screen"
-    assert result.rows[1]["status"] == "Confirmation Received"
+    assert result.rows[1]["status"] == "Waiting"
 
 
 def test_skips_repeated_headers_and_imports_numbered_table_rows() -> None:

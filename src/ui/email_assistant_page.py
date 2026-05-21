@@ -6,7 +6,8 @@ from typing import Any
 import pandas as pd
 import streamlit as st
 
-from src.database import create_application
+from src.database import create_application, update_application
+from src.duplicates import find_likely_duplicate_applications, format_duplicate_candidate
 from src.email_insights import (
     build_confidence_threshold_rows,
     build_context_rows,
@@ -81,7 +82,7 @@ def render_job_post_intake() -> None:
 
     draft = st.session_state.get("last_job_post_draft")
     if not draft:
-        st.info("Paste a JD or job URL to extract a draft Saved application record.")
+        st.info("Paste a JD or job URL to extract a draft application record.")
         return
 
     analysis = draft["analysis"]
@@ -100,7 +101,7 @@ def render_job_post_intake() -> None:
     if analysis["missing_fields"]:
         st.warning("Required fields still need review: " + ", ".join(analysis["missing_fields"]))
 
-    st.subheader("Create Saved Application")
+    st.subheader("Create Application")
     version = int(st.session_state.get("job_post_draft_version", 0))
     with st.form("create_from_job_post_form", clear_on_submit=False):
         col_company, col_role, col_location = st.columns(3)
@@ -118,14 +119,14 @@ def render_job_post_intake() -> None:
 
         col_date, col_status, col_follow_up = st.columns(3)
         saved_date = col_date.date_input(
-            "Saved date",
+            "Application date",
             value=_text_to_date(payload.get("application_date")) or date.today(),
             key=f"job_post_date_{version}",
         )
         status = col_status.selectbox(
             "Status",
             STATUS_OPTIONS,
-            index=_option_index(STATUS_OPTIONS, payload.get("status", "Saved")),
+            index=_option_index(STATUS_OPTIONS, payload.get("status", "Applied")),
             key=f"job_post_status_{version}",
         )
         suggested_follow_up = _text_to_date(payload.get("follow_up_date"))
@@ -174,7 +175,7 @@ def render_job_post_intake() -> None:
                     source="job_post_intake",
                 )
                 st.session_state["job_post_create_success_message"] = (
-                    f"Saved application created from JD: {company.strip()} / {role.strip()}."
+                    f"Application created from JD: {company.strip()} / {role.strip()}."
                 )
                 st.rerun()
 
@@ -391,14 +392,19 @@ def render_email_assistant(applications: list[dict]) -> None:
         )
         status = col_status.selectbox("Status", STATUS_OPTIONS, index=status_index, key="email_create_status")
         follow_up_date = create_recommendation["follow_up_date"]
-        keep_follow_up = col_follow_up.checkbox("Set suggested follow-up", value=bool(follow_up_date))
+        keep_follow_up = col_follow_up.checkbox(
+            "Set suggested follow-up",
+            value=bool(follow_up_date) and status != "Rejected",
+            disabled=status == "Rejected",
+        )
 
         source_link = st.text_input("Source link", value=details.get("source_link", ""), key="email_create_source")
         contact = st.text_input("Contact", value=details.get("contact", ""), key="email_create_contact")
         next_action = st.text_input(
             "Next action",
-            value=create_recommendation["next_action"],
+            value="No action" if status == "Rejected" else create_recommendation["next_action"],
             key="email_create_next_action",
+            disabled=status == "Rejected",
         )
         notes = st.text_area(
             "Notes",
@@ -417,26 +423,117 @@ def render_email_assistant(applications: list[dict]) -> None:
             if not company.strip() or not role.strip():
                 st.error("Company and role are required to create an application.")
             else:
-                create_application(
-                    {
-                        "company": company,
-                        "role": role,
-                        "location": location,
-                        "application_date": application_date.isoformat(),
-                        "status": status,
-                        "source_link": source_link,
-                        "contact": contact,
-                        "notes": notes,
-                        "rejection_reason": rejection_reason,
-                        "next_action": next_action,
-                        "follow_up_date": create_recommendation["follow_up_date"] if keep_follow_up else "",
-                    },
-                    source="email_assistant",
-                )
-                st.session_state["email_create_success_message"] = (
-                    f"Application created from email: {company.strip()} / {role.strip()}."
-                )
+                payload = {
+                    "company": company,
+                    "role": role,
+                    "location": location,
+                    "application_date": application_date.isoformat(),
+                    "status": status,
+                    "source_link": source_link,
+                    "contact": contact,
+                    "notes": notes,
+                    "rejection_reason": rejection_reason,
+                    "next_action": next_action,
+                    "follow_up_date": create_recommendation["follow_up_date"] if keep_follow_up else "",
+                }
+                duplicate_candidates = find_likely_duplicate_applications(payload, applications)
+                if duplicate_candidates:
+                    st.session_state["email_duplicate_payload"] = payload
+                    st.session_state["email_duplicate_candidate_ids"] = [
+                        int(candidate["application"]["id"]) for candidate in duplicate_candidates
+                    ]
+                    st.session_state["email_create_success_message"] = (
+                        "Likely duplicate found. Review the suggested existing record below before creating a new one."
+                    )
+                else:
+                    create_application(payload, source="email_assistant")
+                    st.session_state["email_create_success_message"] = (
+                        f"Application created from email: {company.strip()} / {role.strip()}."
+                    )
                 st.rerun()
+
+    _render_email_duplicate_resolution(applications)
+
+
+def _render_email_duplicate_resolution(applications: list[dict]) -> None:
+    payload = st.session_state.get("email_duplicate_payload")
+    candidate_ids = st.session_state.get("email_duplicate_candidate_ids", [])
+    if not isinstance(payload, dict) or not candidate_ids:
+        return
+
+    applications_by_id = {int(application["id"]): application for application in applications}
+    candidates = [
+        applications_by_id[application_id] for application_id in candidate_ids if application_id in applications_by_id
+    ]
+    if not candidates:
+        st.session_state.pop("email_duplicate_payload", None)
+        st.session_state.pop("email_duplicate_candidate_ids", None)
+        return
+
+    st.warning("Possible duplicate from email.")
+    st.caption("Update the existing record if this email belongs to an application you already track.")
+    for candidate in candidates:
+        candidate_match = find_likely_duplicate_applications(payload, [candidate])
+        label = (
+            format_duplicate_candidate(candidate_match[0])
+            if candidate_match
+            else (f"{candidate.get('company', '')} / {candidate.get('role', '')}")
+        )
+        st.write(f"Suggested existing record: {label}")
+        update_col, create_col, cancel_col = st.columns([1.2, 1.2, 3])
+        if update_col.button(f"Update #{candidate['id']}", key=f"email_duplicate_update_{candidate['id']}"):
+            update_application(
+                int(candidate["id"]),
+                _merge_email_duplicate_payload(candidate, payload),
+                source="email_duplicate_resolution",
+            )
+            _clear_email_duplicate_state()
+            st.success("Existing application updated from email instead of creating a duplicate.")
+            st.rerun()
+        if create_col.button("Create new anyway", key=f"email_duplicate_create_{candidate['id']}"):
+            create_application(payload, source="email_duplicate_override")
+            _clear_email_duplicate_state()
+            st.success("New application created after duplicate review.")
+            st.rerun()
+        if cancel_col.button("Cancel duplicate review", key=f"email_duplicate_cancel_{candidate['id']}"):
+            _clear_email_duplicate_state()
+            st.rerun()
+
+
+def _merge_email_duplicate_payload(existing: dict, incoming: dict) -> dict:
+    merged = dict(existing)
+    for column in [
+        "company",
+        "role",
+        "location",
+        "application_date",
+        "status",
+        "source_link",
+        "contact",
+        "rejection_reason",
+        "next_action",
+        "follow_up_date",
+    ]:
+        incoming_value = str(incoming.get(column, "") or "").strip()
+        if incoming_value:
+            merged[column] = incoming_value
+    merged["notes"] = _join_notes(existing.get("notes", ""), incoming.get("notes", ""))
+    return merged
+
+
+def _clear_email_duplicate_state() -> None:
+    st.session_state.pop("email_duplicate_payload", None)
+    st.session_state.pop("email_duplicate_candidate_ids", None)
+
+
+def _join_notes(existing_notes: object, incoming_notes: object) -> str:
+    notes: list[str] = []
+    for value in [existing_notes, incoming_notes]:
+        for part in str(value or "").split(" | "):
+            cleaned = part.strip()
+            if cleaned and cleaned not in notes:
+                notes.append(cleaned)
+    return " | ".join(notes)
 
 
 def render_email_feedback_controls(
@@ -567,18 +664,26 @@ def _render_email_apply_draft_controls(
     selected_id = int(selected.get("id") or 0)
     suggested_status = str(classification.get("suggested_status") or selected.get("status") or "Applied")
     follow_up_date = _text_to_date(recommendation.get("follow_up_date") or selected.get("follow_up_date"))
+    is_rejected_update = suggested_status == "Rejected"
 
     draft_col_a, draft_col_b = st.columns([2, 1])
+    default_next_action = (
+        "No action"
+        if is_rejected_update
+        else str(recommendation.get("next_action") or selected.get("next_action") or "")
+    )
     next_action = draft_col_a.text_area(
         "Next action to save",
-        value=str(recommendation.get("next_action") or selected.get("next_action") or ""),
+        value=default_next_action,
         height=90,
+        disabled=is_rejected_update,
         key=f"email_next_action_override_{selected_id}_{suggested_status}",
         help="Edit the task that will be written to the application.",
     )
     keep_follow_up = draft_col_b.checkbox(
         "Set follow-up date",
-        value=bool(follow_up_date),
+        value=False if is_rejected_update else bool(follow_up_date),
+        disabled=is_rejected_update,
         key=f"email_keep_follow_up_override_{selected_id}_{suggested_status}",
     )
     follow_up_value = draft_col_b.date_input(
@@ -635,41 +740,28 @@ def _classification_with_status_override(classification: dict, status_to_apply: 
 
 def _category_for_status(status: str) -> str:
     return {
-        "Confirmation Received": "Application Confirmation",
-        "Interview Scheduled": "Interview Invitation",
-        "Assessment": "Assessment / Coding Test",
+        "Waiting": "Application Confirmation",
+        "Interview / Assessment": "Assessment / Coding Test",
         "Rejected": "Rejection",
-        "Follow-up Needed": "Follow-up Needed",
-        "Offer": "Offer",
-        "No Response": "No Response",
-        "Saved": "Other",
+        "Action Needed": "Recruiter Reply",
         "Applied": "Other",
     }.get(status, "Other")
 
 
 def _next_action_for_status(status: str) -> str:
     return {
-        "Confirmation Received": "Wait for the next response and follow up if needed.",
-        "Interview Scheduled": "Confirm availability and prepare interview notes.",
-        "Assessment": "Review the assessment instructions and deadline.",
-        "Rejected": "Close the application and capture useful notes.",
-        "Follow-up Needed": "Send or prepare a polite follow-up message.",
-        "Offer": "Review the offer details and prepare a response.",
-        "No Response": "Archive or mark the application as no response.",
-        "Saved": "Review the saved application and decide whether to apply.",
-        "Applied": "Wait for response and follow up if needed.",
+        "Waiting": "Wait",
+        "Interview / Assessment": "Prepare for the interview or assessment.",
+        "Rejected": "No action",
+        "Action Needed": "Review and act today.",
+        "Applied": "Wait",
     }.get(status, "Review manually and decide whether the application needs an update.")
 
 
 def _follow_up_days_for_status(status: str) -> int | None:
     return {
-        "Confirmation Received": 7,
-        "Interview Scheduled": 1,
-        "Assessment": 2,
-        "Follow-up Needed": 0,
-        "Offer": 2,
-        "Applied": 7,
-        "Saved": 7,
+        "Interview / Assessment": 2,
+        "Action Needed": 0,
     }.get(status)
 
 

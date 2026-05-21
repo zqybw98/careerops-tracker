@@ -38,3 +38,17 @@ A task is complete only when:
 - The change is minimal and localized.
 - Relevant checks have passed or the reason for not running them is stated.
 - No unrelated files or logic were modified.
+
+## Project-Specific Instructions
+
+- This is a Python + Streamlit + SQLite project, not an npm/React project.
+- Do not create `package.json` and do not use npm commands.
+- Main app entry point: `app.py`.
+- First-time setup on Windows: `.\setup.bat`.
+- Daily run on Windows: `.\start.bat`.
+- Manual run on Windows: `.\.venv\Scripts\python.exe -m streamlit run app.py`.
+- Tests: `python -m pytest`.
+- Quality checks: `python -m ruff check .`, `python -m ruff format --check .`, and `python -m mypy src`.
+- Prefer small, safe, backward-compatible changes.
+- Preserve existing SQLite migrations and data compatibility.
+- Do not rewrite unrelated UI or business logic.

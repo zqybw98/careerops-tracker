@@ -209,10 +209,10 @@ def _missing_fields(details: dict[str, str]) -> list[str]:
 def _summary(details: dict[str, str], confidence: float) -> str:
     if details.get("company") and details.get("role"):
         return (
-            f"Ready to create a Saved application for {details['company']} / "
+            f"Ready to create an Applied application for {details['company']} / "
             f"{details['role']} ({confidence:.0%} confidence)."
         )
-    return "Review missing required fields before creating a Saved application."
+    return "Review missing required fields before creating an application."
 
 
 def _field_rows(details: dict[str, str]) -> list[dict[str, str]]:

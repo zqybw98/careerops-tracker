@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -7,7 +8,7 @@ from os import getenv
 from pathlib import Path
 from typing import Any
 
-from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
+from src.models import APPLICATION_COLUMNS, apply_status_business_rules, normalize_status
 
 DEFAULT_DB_PATH = Path(getenv("CAREEROPS_DB_PATH", "data/applications.db"))
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
@@ -56,8 +57,9 @@ def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
 
 
 def init_db(db_path: Path | str = DEFAULT_DB_PATH) -> None:
-    with get_connection(db_path) as connection:
-        _apply_migrations(connection)
+    database_path = Path(db_path)
+    with get_connection(database_path) as connection:
+        _apply_migrations(connection, database_path)
         connection.commit()
 
 
@@ -423,20 +425,21 @@ def _clean_payload(payload: dict[str, Any]) -> dict[str, Any]:
         else:
             cleaned[column] = str(value).strip()
 
-    if not cleaned["status"]:
-        cleaned["status"] = "Applied"
-    if cleaned["status"] not in STATUS_OPTIONS:
-        cleaned["status"] = "Applied"
-    return cleaned
+    cleaned["status"] = normalize_status(cleaned["status"])
+    return apply_status_business_rules(cleaned)
 
 
-def _apply_migrations(connection: sqlite3.Connection) -> None:
+def _apply_migrations(connection: sqlite3.Connection, db_path: Path) -> None:
     _ensure_schema_version_table(connection)
     applied_versions = _get_applied_migration_versions(connection)
+    backup_created = False
     for migration in _load_migrations():
         if migration.version in applied_versions:
             continue
         if not _migration_is_satisfied(connection, migration.version):
+            if not backup_created:
+                _backup_database_before_migration(connection, db_path, migration.version)
+                backup_created = True
             connection.executescript(migration.path.read_text(encoding="utf-8"))
         _record_migration(connection, migration)
         applied_versions.add(migration.version)
@@ -493,7 +496,50 @@ def _migration_is_satisfied(connection: sqlite3.Connection, version: int) -> boo
             connection,
             "idx_email_feedback_signature",
         )
+    if version == 5:
+        return _daily_status_migration_satisfied(connection)
     return False
+
+
+def _daily_status_migration_satisfied(connection: sqlite3.Connection) -> bool:
+    if not _table_exists(connection, "applications"):
+        return False
+    row = connection.execute(
+        """
+        SELECT COUNT(*) AS count
+        FROM applications
+        WHERE status IN (
+            'Saved',
+            'Confirmation Received',
+            'Follow-up Needed',
+            'Assessment',
+            'Interview Scheduled',
+            'No Response',
+            'Offer'
+        )
+           OR (
+                status = 'Rejected'
+            AND (
+                    COALESCE(next_action, '') <> 'No action'
+                 OR COALESCE(follow_up_date, '') <> ''
+                )
+           )
+        """
+    ).fetchone()
+    return int(row["count"]) == 0
+
+
+def _backup_database_before_migration(connection: sqlite3.Connection, db_path: Path, migration_version: int) -> None:
+    if not _table_exists(connection, "applications"):
+        return
+    if not db_path.exists() or db_path.stat().st_size == 0:
+        return
+
+    backup_dir = db_path.parent / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+    backup_path = backup_dir / f"{db_path.stem}_before_migration_{migration_version:03d}_{timestamp}{db_path.suffix}"
+    shutil.copy2(db_path, backup_path)
 
 
 def _record_migration(connection: sqlite3.Connection, migration: Migration) -> None:

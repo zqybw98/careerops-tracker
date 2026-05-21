@@ -21,7 +21,7 @@ def test_builds_saved_application_payload_from_job_post() -> None:
     assert payload["company"] == "SAP"
     assert payload["role"] == "Werkstudent Quality & AI Engineering"
     assert payload["application_date"] == "2026-05-15"
-    assert payload["status"] == "Saved"
+    assert payload["status"] == "Applied"
     assert payload["source_link"] == "https://careers.sap.com/job/quality-ai-working-student"
     assert payload["follow_up_date"] == "2026-06-01"
     assert "Draft created from job post intake" in payload["notes"]

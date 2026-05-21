@@ -81,7 +81,7 @@ def build_contact_records(
         if follow_up_date and _is_open(application):
             record["follow_up_dates"].append(follow_up_date)
             record["follow_up_needed"] = True
-        if _text(application.get("status")) == "Follow-up Needed":
+        if _text(application.get("status")) == "Action Needed":
             record["follow_up_needed"] = True
 
         last_contact_at = _latest_contact_timestamp(application, events_by_application.get(int(application["id"]), []))

@@ -26,6 +26,8 @@ def build_pending_action_payload(
 
     if action == "mark_done":
         next_review_date = current_date + timedelta(days=7)
+        if str(payload.get("status", "")) == "Action Needed":
+            payload["status"] = "Waiting"
         payload["next_action"] = (
             f"Completed on {current_date.isoformat()}. "
             f"Review again on {next_review_date.isoformat()} if there is no update. Last action: {reminder_message}"

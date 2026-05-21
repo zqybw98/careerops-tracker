@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import Any
 
 import pandas as pd
 import plotly.express as px
@@ -21,19 +22,25 @@ from src.analytics import (
 )
 from src.application_filters import build_bulk_update_payload, filter_applications
 from src.application_note_parser import parse_application_note
-from src.dashboard import build_summary, filter_dashboard_applications
+from src.dashboard import build_daily_dashboard_sections, build_summary, filter_dashboard_applications
 from src.database import (
     create_application,
-    deduplicate_applications,
     delete_application,
     get_application_events,
     get_applications,
     init_db,
     update_application,
 )
-from src.models import STATUS_OPTIONS
+from src.duplicates import find_likely_duplicate_applications, format_duplicate_candidate
+from src.email_insights import confidence_gate
+from src.models import DEFAULT_NEXT_ACTION_BY_STATUS, STATUS_OPTIONS, normalize_status
 from src.reminder_actions import PendingAction, build_pending_action_payload
 from src.reminder_engine import generate_reminders
+from src.services.email_workflow import (
+    apply_email_workflow_update,
+    build_email_workflow_for_application,
+    classify_email_for_workflow,
+)
 from src.ui.components import render_app_header, with_display_sequence
 from src.ui.contacts_page import render_contacts
 from src.ui.data_settings_page import render_data_tools
@@ -59,6 +66,18 @@ DASHBOARD_EDITABLE_COLUMNS = [
     "status",
     "next_action",
     "follow_up_date",
+]
+
+DASHBOARD_SECTION_COLUMNS = [
+    "#",
+    "company",
+    "role",
+    "application_date",
+    "status",
+    "next_action",
+    "follow_up_date",
+    "source_link",
+    "updated_at",
 ]
 
 st.set_page_config(
@@ -106,8 +125,11 @@ st.markdown(
 
 init_db()
 
+WORKSPACE_NAV_REQUEST_KEY = "_workspace_nav_request"
+
 
 def main() -> None:
+    _apply_workspace_navigation_request()
     applications = get_applications()
     reminders = generate_reminders(applications)
 
@@ -131,18 +153,23 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
         "Include closed applications",
         value=False,
         key="overview_include_closed_applications",
-        help="Show Rejected and No Response records in the dashboard.",
+        help="Include rejected records in analytics and tables.",
     )
     visible_applications = filter_dashboard_applications(applications, include_closed=include_closed)
-    visible_reminders = _filter_reminders_for_applications(reminders, visible_applications)
     hidden_closed_count = len(applications) - len(visible_applications)
 
     if not include_closed and hidden_closed_count:
-        st.caption(f"Hiding {hidden_closed_count} closed application(s): Rejected / No Response.")
+        st.caption(f"Hiding {hidden_closed_count} rejected application(s) from active analytics.")
 
     pending_action_message = st.session_state.pop("pending_action_success_message", None)
     if pending_action_message:
         st.success(pending_action_message)
+
+    sections = build_daily_dashboard_sections(applications)
+    st.subheader("Action Center")
+    _render_action_center(applications, reminders, sections)
+    _render_overview_quick_tools(applications)
+    st.divider()
 
     summary = build_summary(visible_applications)
     pipeline_health = build_pipeline_health(visible_applications)
@@ -150,17 +177,44 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
     metric_columns = st.columns(6)
     metric_columns[0].metric("Total shown", summary["total"])
     metric_columns[1].metric("This week", summary["applied_this_week"])
-    metric_columns[2].metric("Waiting", summary["waiting"])
-    metric_columns[3].metric("Interviews", summary["interviews"])
-    metric_columns[4].metric("Assessments", summary["assessments"])
+    metric_columns[2].metric("Waiting / Applied", summary["waiting"])
+    metric_columns[3].metric("Interview / Assessment", summary["interviews"])
+    metric_columns[4].metric("Action needed", len(sections["today_actions"]))
     if include_closed:
         metric_columns[5].metric("Rejected", summary["rejections"])
     else:
-        metric_columns[5].metric("Closed hidden", hidden_closed_count)
+        metric_columns[5].metric("Rejected hidden", hidden_closed_count)
+
+    with st.expander("Review detailed workflow lists"):
+        _render_dashboard_section(
+            "Today Action Required",
+            sections["today_actions"],
+            empty_message="Nothing requires action today.",
+        )
+        _render_dashboard_section(
+            "Follow-up Due Soon",
+            sections["due_soon"],
+            empty_message="No follow-ups are due in the next 7 days.",
+        )
+        _render_dashboard_section(
+            "Waiting / Pending Applications",
+            sections["waiting_pending"],
+            empty_message="No active waiting or interview records.",
+            limit=18,
+        )
+        _render_dashboard_section(
+            "Recent Rejections",
+            sections["recent_rejections"],
+            empty_message="No rejected applications recorded yet.",
+            include_rejection_reason=True,
+            limit=8,
+        )
 
     if not visible_applications:
         if applications:
-            st.info("No active applications to show. Turn on Include closed applications to review closed records.")
+            st.info(
+                "No active applications to analyze. Turn on Include closed applications to review rejected records."
+            )
         else:
             st.info("Add your first application to start building the dashboard.")
         return
@@ -168,45 +222,23 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
     df = pd.DataFrame(visible_applications)
     events = get_application_events()
 
-    recent_title_col, recent_action_col = st.columns([4, 1])
-    recent_title_col.subheader("Recent Applications")
-    recent_action_col.button(
-        "Add application",
-        key="dashboard_add_application",
-        type="primary",
-        use_container_width=True,
-        on_click=_go_to_applications_workspace,
+    with st.expander("Quick edit visible application fields"):
+        display_df = with_display_sequence(df)
+        render_dashboard_recent_editor(visible_applications, display_df)
+
+    status_counts = df["status"].value_counts().reset_index()
+    status_counts.columns = ["status", "count"]
+    fig = px.bar(
+        status_counts,
+        x="status",
+        y="count",
+        color="status",
+        title="Applications by Status",
+        text="count",
     )
-    display_df = with_display_sequence(df)
-    render_dashboard_recent_editor(visible_applications, display_df)
-    st.divider()
-
-    chart_col, reminder_col = st.columns([2, 1])
-
-    with chart_col:
-        status_counts = df["status"].value_counts().reset_index()
-        status_counts.columns = ["status", "count"]
-        fig = px.bar(
-            status_counts,
-            x="status",
-            y="count",
-            color="status",
-            title="Applications by Status",
-            text="count",
-        )
-        fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Applications")
-        _style_bar_labels(fig)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with reminder_col:
-        st.subheader("Pending Actions")
-        if not visible_reminders:
-            st.success("No reminders due right now.")
-        else:
-            st.caption(f"{len(visible_reminders)} pending action(s)")
-            with st.container(height=520):
-                for reminder in visible_reminders:
-                    render_pending_action_card(reminder, visible_applications)
+    fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="Applications")
+    _style_bar_labels(fig)
+    st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Decision Analytics")
     health_columns = st.columns(4)
@@ -431,8 +463,377 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
         )
 
 
+def _render_action_center(applications: list[dict], reminders: list[dict], sections: dict[str, list[dict]]) -> None:
+    today = date.today()
+    overdue_reminders = [
+        reminder for reminder in reminders if (_text_to_date(reminder.get("due_date")) or today) < today
+    ]
+    today_reminders = [
+        reminder for reminder in reminders if (_text_to_date(reminder.get("due_date")) or today) == today
+    ]
+    waiting_follow_up = _waiting_applications_may_need_follow_up(applications, today)
+    recent_applications = _recent_active_applications(applications)
+
+    action_cols = st.columns([1, 1, 1, 1, 1, 1.2, 1.2])
+    action_cols[0].metric("Overdue", len(overdue_reminders))
+    action_cols[1].metric("Due today", len(today_reminders))
+    action_cols[2].metric("Due this week", len(sections["due_soon"]))
+    action_cols[3].metric("Waiting follow-up", len(waiting_follow_up))
+    action_cols[4].metric("Recent active", len(recent_applications))
+    action_cols[5].button(
+        "Add application",
+        key="action_center_add_application",
+        type="primary",
+        use_container_width=True,
+        on_click=_go_to_applications_workspace,
+    )
+    action_cols[6].button(
+        "Email Assistant",
+        key="action_center_email_assistant",
+        use_container_width=True,
+        on_click=_go_to_email_assistant_workspace,
+    )
+
+    urgent_col, pipeline_col = st.columns([1.05, 1])
+    with urgent_col:
+        st.markdown("**Overdue / Today**")
+        urgent_reminders = overdue_reminders[:3] + today_reminders[: max(0, 4 - len(overdue_reminders[:3]))]
+        if not urgent_reminders:
+            st.success("No action is due right now.")
+        for reminder in urgent_reminders:
+            render_pending_action_card(reminder, applications)
+        if len(overdue_reminders) + len(today_reminders) > len(urgent_reminders):
+            st.caption("More due actions are available in the detailed workflow list below.")
+
+    with pipeline_col:
+        _render_compact_action_table(
+            "Follow-up Due Soon",
+            sections["due_soon"],
+            empty_message="No follow-ups are due in the next 7 days.",
+            limit=5,
+        )
+        _render_compact_action_table(
+            "Waiting Applications That May Need Follow-up",
+            waiting_follow_up,
+            empty_message="No stale waiting applications detected.",
+            limit=5,
+        )
+        _render_compact_action_table(
+            "Recent Applications",
+            recent_applications,
+            empty_message="No recent active applications yet.",
+            limit=5,
+        )
+
+
+def _render_overview_quick_tools(applications: list[dict]) -> None:
+    quick_update_tab, email_tab = st.tabs(["Quick Update", "Paste Email Update"])
+    with quick_update_tab:
+        _render_overview_quick_update(applications)
+    with email_tab:
+        _render_overview_email_shortcut(applications)
+
+
+def _render_overview_quick_update(applications: list[dict]) -> None:
+    st.caption("Fast status, next-action, and follow-up edits without opening the full Applications form.")
+    if not applications:
+        st.info("Add an application before using Quick Update.")
+        return
+
+    label_id_map = _application_label_id_map(applications)
+    selected_label = st.selectbox(
+        "Application",
+        list(label_id_map.keys()),
+        key="overview_quick_update_application",
+    )
+    selected_id = label_id_map[selected_label]
+    selected = _application_by_id(applications, selected_id)
+    if selected is None:
+        st.warning("Selected application was not found.")
+        return
+
+    with st.form(f"overview_quick_update_form_{selected_id}"):
+        status_col, follow_col = st.columns([1, 1])
+        current_status = normalize_status(selected.get("status"))
+        status = status_col.selectbox(
+            "Status",
+            STATUS_OPTIONS,
+            index=_option_index(STATUS_OPTIONS, current_status),
+        )
+        keep_follow_up = follow_col.checkbox(
+            "Set follow-up date",
+            value=bool(selected.get("follow_up_date")) and status != "Rejected",
+            disabled=status == "Rejected",
+        )
+        follow_up_date = follow_col.date_input(
+            "Follow-up date",
+            value=_text_to_date(selected.get("follow_up_date")) or date.today() + timedelta(days=7),
+            disabled=not keep_follow_up or status == "Rejected",
+        )
+        next_action = st.text_input(
+            "Next action",
+            value="No action" if status == "Rejected" else str(selected.get("next_action", "")),
+        )
+        note = st.text_area("Append note", height=90, placeholder="Short note, for example: recruiter replied today.")
+
+        if st.form_submit_button("Save quick update", type="primary"):
+            incoming_note = note.strip()
+            if status == "Rejected" and not incoming_note:
+                incoming_note = f"Rejection received by quick update on {date.today().isoformat()}."
+            update_application(
+                selected_id,
+                {
+                    **selected,
+                    "status": status,
+                    "next_action": next_action,
+                    "follow_up_date": follow_up_date.isoformat() if keep_follow_up and status != "Rejected" else "",
+                    "notes": _join_notes(selected.get("notes", ""), incoming_note),
+                },
+                source="quick_update",
+            )
+            st.success(f"Quick update saved for {selected.get('company', '')} / {selected.get('role', '')}.")
+            st.rerun()
+
+
+def _render_overview_email_shortcut(applications: list[dict]) -> None:
+    st.caption("Paste a recruiting email here for a compact preview. Use the full Email Assistant for detailed review.")
+    with st.container(border=True):
+        subject = st.text_input("Email subject", key="overview_email_subject")
+        body = st.text_area(
+            "Email body or recruiter message",
+            height=150,
+            key="overview_email_body",
+            placeholder="Paste the email text here...",
+        )
+        analyze_col, open_col = st.columns([1, 3])
+        if analyze_col.button("Analyze email", key="overview_analyze_email", type="primary"):
+            if not subject.strip() and not body.strip():
+                st.warning("Paste an email subject or body first.")
+            else:
+                st.session_state["overview_email_workflow"] = classify_email_for_workflow(
+                    subject=subject,
+                    body=body,
+                    applications=applications,
+                    use_feedback=True,
+                )
+                st.session_state["overview_email_workflow_subject"] = subject
+                st.session_state["overview_email_workflow_body"] = body
+        open_col.caption("High-confidence matches can be applied here; everything else opens in Email Assistant.")
+
+    workflow = st.session_state.get("overview_email_workflow")
+    if isinstance(workflow, dict):
+        _render_overview_email_preview(
+            workflow,
+            applications,
+            str(st.session_state.get("overview_email_workflow_subject", "")),
+            str(st.session_state.get("overview_email_workflow_body", "")),
+        )
+
+
+def _render_overview_email_preview(
+    workflow: dict[str, Any],
+    applications: list[dict],
+    subject: str,
+    body: str,
+) -> None:
+    classification = workflow["classification"]
+    details = workflow["details"]
+    match = workflow.get("match")
+    match_candidates = workflow.get("match_candidates", [])
+    confidence = float(classification.get("confidence") or 0)
+    gate = confidence_gate(confidence)
+    matched_application = (
+        _application_by_id(applications, int(match.get("application_id") or 0)) if isinstance(match, dict) else None
+    )
+
+    recommendation: dict[str, Any] = {
+        "next_action": classification.get("suggested_next_action", ""),
+        "follow_up_date": details.get("suggested_follow_up_date", ""),
+    }
+    workflow_decision: dict[str, Any] = {"status_update_allowed": False, "primary_action_label": "Apply update"}
+    operation_summary: dict[str, str] | None = None
+    if matched_application is not None:
+        workflow_context = build_email_workflow_for_application(
+            classification,
+            details,
+            matched_application,
+            match,
+            match_candidates,
+        )
+        recommendation = workflow_context["recommendation"]
+        workflow_decision = workflow_context["workflow_decision"]
+        operation_summary = workflow_context["operation_summary"]
+
+    st.markdown("**Suggested update preview**")
+    preview_cols = st.columns(6)
+    preview_cols[0].metric("Category", str(classification.get("category", "Other")))
+    preview_cols[1].metric("Confidence", f"{confidence:.0%}")
+    preview_cols[2].metric("Gate", gate["gate"])
+    preview_cols[3].metric("Suggested status", normalize_status(classification.get("suggested_status")))
+    preview_cols[4].metric("Company", details.get("company") or (matched_application or {}).get("company", "-"))
+    preview_cols[5].metric("Role", details.get("role") or (matched_application or {}).get("role", "-"))
+    st.info(str(recommendation.get("next_action") or "Review this email manually."))
+
+    if matched_application is not None:
+        st.success(
+            "Matched existing application: "
+            f"{matched_application.get('company', '')} / {matched_application.get('role', '')}"
+        )
+    elif match_candidates:
+        st.warning("Possible matches found, but none were confident enough for a direct update.")
+    else:
+        st.warning("No existing application match found. Open Email Assistant to review or create a new record.")
+
+    apply_allowed = (
+        matched_application is not None
+        and gate["gate"] == "Ready"
+        and bool(workflow_decision.get("status_update_allowed"))
+    )
+    apply_col, full_review_col = st.columns([1, 2])
+    if apply_col.button(
+        str(workflow_decision.get("primary_action_label") or "Apply suggested update"),
+        key="overview_apply_email_update",
+        type="primary",
+        disabled=not apply_allowed,
+    ):
+        if matched_application is None:
+            st.warning("No matched application is available for this update.")
+        else:
+            apply_email_workflow_update(
+                int(matched_application["id"]),
+                matched_application,
+                classification,
+                details,
+                recommendation,
+                apply_status=True,
+                operation_summary=operation_summary,
+            )
+            st.success("Suggested email update applied.")
+            st.rerun()
+    if not apply_allowed:
+        st.caption("Status update is disabled unless the match exists and the confidence gate is Ready.")
+
+    if full_review_col.button("Open in Email Assistant for full review", key="overview_open_email_assistant"):
+        _prime_email_assistant_from_overview(subject, body, workflow)
+        _go_to_email_assistant_workspace()
+        st.rerun()
+
+
+def _prime_email_assistant_from_overview(subject: str, body: str, workflow: dict[str, Any]) -> None:
+    st.session_state["email_subject_input"] = subject
+    st.session_state["email_body_input"] = body
+    st.session_state["last_email_subject"] = subject
+    st.session_state["last_email_body"] = body
+    st.session_state["last_classification"] = workflow["classification"]
+    st.session_state["last_email_details"] = workflow["details"]
+    st.session_state["last_application_match"] = workflow["match"]
+    st.session_state["last_application_matches"] = workflow["match_candidates"]
+    st.session_state["last_email_feedback"] = workflow["feedback"]
+
+
+def _render_compact_action_table(
+    title: str,
+    rows: list[dict],
+    *,
+    empty_message: str,
+    limit: int,
+) -> None:
+    st.markdown(f"**{title}**")
+    if not rows:
+        st.caption(empty_message)
+        return
+    compact_columns = ["company", "role", "status", "next_action", "follow_up_date"]
+    display_df = pd.DataFrame(rows[:limit])
+    available_columns = [column for column in compact_columns if column in display_df.columns]
+    st.dataframe(display_df[available_columns], use_container_width=True, hide_index=True, height=180)
+    if len(rows) > limit:
+        st.caption(f"Showing {limit} of {len(rows)} records.")
+
+
+def _waiting_applications_may_need_follow_up(applications: list[dict], today: date) -> list[dict]:
+    candidates: list[dict] = []
+    for application in applications:
+        status = normalize_status(application.get("status"))
+        if status not in {"Applied", "Waiting", "Interview / Assessment"}:
+            continue
+        if _text_to_date(application.get("follow_up_date")):
+            continue
+        application_date = _text_to_date(application.get("application_date"))
+        if application_date and (today - application_date).days >= 7:
+            candidates.append(application)
+    return sorted(
+        candidates,
+        key=lambda item: _text_to_date(item.get("application_date")) or date.min,
+        reverse=True,
+    )
+
+
+def _recent_active_applications(applications: list[dict]) -> list[dict]:
+    active_applications = [
+        application for application in applications if normalize_status(application.get("status")) != "Rejected"
+    ]
+    return sorted(
+        active_applications,
+        key=lambda item: (
+            _text_to_date(item.get("application_date")) or date.min,
+            str(item.get("updated_at", "")),
+        ),
+        reverse=True,
+    )[:8]
+
+
+def _render_dashboard_section(
+    title: str,
+    rows: list[dict],
+    *,
+    empty_message: str,
+    include_rejection_reason: bool = False,
+    limit: int = 10,
+) -> None:
+    st.subheader(title)
+    if not rows:
+        st.info(empty_message)
+        return
+
+    section_df = with_display_sequence(pd.DataFrame(rows[:limit]))
+    columns = list(DASHBOARD_SECTION_COLUMNS)
+    if include_rejection_reason:
+        columns.insert(-1, "rejection_reason")
+    available_columns = [column for column in columns if column in section_df.columns]
+    display_df = section_df[available_columns].rename(
+        columns={
+            "company": "Company",
+            "role": "Position",
+            "application_date": "Application Date",
+            "status": "Status",
+            "next_action": "Next Action",
+            "follow_up_date": "Follow-up Date",
+            "source_link": "Source",
+            "rejection_reason": "Rejection Reason",
+            "updated_at": "Last Updated",
+        }
+    )
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    if len(rows) > limit:
+        st.caption(f"Showing {limit} of {len(rows)} records. Use Applications for the full list.")
+
+
 def _go_to_applications_workspace() -> None:
-    st.session_state["workspace_nav"] = "Applications"
+    _request_workspace_navigation("Applications")
+
+
+def _go_to_email_assistant_workspace() -> None:
+    _request_workspace_navigation("Email Assistant")
+
+
+def _request_workspace_navigation(workspace: str) -> None:
+    st.session_state[WORKSPACE_NAV_REQUEST_KEY] = workspace
+
+
+def _apply_workspace_navigation_request() -> None:
+    requested_workspace = st.session_state.pop(WORKSPACE_NAV_REQUEST_KEY, None)
+    if requested_workspace:
+        st.session_state["workspace_nav"] = requested_workspace
 
 
 def render_pending_action_card(reminder: dict, applications: list[dict]) -> None:
@@ -480,7 +881,7 @@ def _apply_pending_action(application: dict, reminder: dict, action: PendingActi
 
 
 def _open_application_from_pending(application_id: int) -> None:
-    st.session_state["workspace_nav"] = "Applications"
+    _request_workspace_navigation("Applications")
     st.session_state["application_edit_target_id"] = application_id
     st.session_state["application_status_filter"] = STATUS_OPTIONS
     st.session_state["application_company_search"] = ""
@@ -581,40 +982,48 @@ def render_applications(applications: list[dict]) -> None:
             if not company.strip() or not role.strip():
                 st.error("Company and role are required.")
             else:
-                create_application(
-                    {
-                        "company": company,
-                        "role": role,
-                        "location": location,
-                        "application_date": application_date.isoformat(),
-                        "status": status,
-                        "source_link": source_link,
-                        "contact": contact,
-                        "notes": notes,
-                        "rejection_reason": rejection_reason,
-                        "next_action": next_action,
-                        "follow_up_date": _date_to_text(follow_up_date),
-                    },
-                    source="manual",
-                )
-                st.session_state.pop("add_application_prefill", None)
-                st.success("Application added.")
-                st.rerun()
+                payload = {
+                    "company": company,
+                    "role": role,
+                    "location": location,
+                    "application_date": application_date.isoformat(),
+                    "status": status,
+                    "source_link": source_link,
+                    "contact": contact,
+                    "notes": notes,
+                    "rejection_reason": rejection_reason,
+                    "next_action": next_action,
+                    "follow_up_date": _date_to_text(follow_up_date),
+                }
+                duplicate_candidates = find_likely_duplicate_applications(payload, applications)
+                if duplicate_candidates:
+                    st.session_state["pending_duplicate_payload"] = payload
+                    st.session_state["pending_duplicate_candidate_ids"] = [
+                        int(candidate["application"]["id"]) for candidate in duplicate_candidates
+                    ]
+                    st.warning(
+                        "Likely duplicate found. Review the suggested existing record before creating a new one."
+                    )
+                    st.rerun()
+                else:
+                    create_application(payload, source="manual")
+                    st.session_state.pop("add_application_prefill", None)
+                    st.success("Application added.")
+                    st.rerun()
+
+    _render_pending_duplicate_resolution(applications)
 
     st.subheader("Manage Applications")
     if not applications:
         st.info("No applications yet.")
         return
 
-    cleanup_col, helper_col = st.columns([1, 4])
-    if cleanup_col.button("Clean duplicate applications", key="manage_clean_duplicates"):
-        removed = deduplicate_applications()
-        if removed:
-            st.success(f"Removed {removed} duplicate records.")
-        else:
-            st.info("No duplicate records found.")
-        st.rerun()
-    helper_col.caption("Removes repeated rows with the same company, role, and application date.")
+    duplicate_col, helper_col = st.columns([1, 4])
+    if duplicate_col.button("Check duplicates", key="manage_check_duplicates"):
+        likely_duplicates = _find_existing_duplicate_pairs(applications)
+        st.session_state["duplicate_review_pairs"] = likely_duplicates
+    helper_col.caption("Detects likely company/position duplicates without deleting any records.")
+    _render_duplicate_review_pairs()
 
     stored_message = st.session_state.pop("application_bulk_success_message", None)
     if stored_message:
@@ -699,12 +1108,12 @@ def render_applications(applications: list[dict]) -> None:
         st.session_state["application_bulk_success_message"] = f"Archived {changed} application(s)."
         st.rerun()
     if bulk_col_b.button(
-        "Mark no response",
+        "Mark waiting",
         disabled=not selected_ids,
         key="bulk_no_response_applications",
     ):
         changed = _apply_bulk_application_action(selected_ids, applications, "mark_no_response")
-        st.session_state["application_bulk_success_message"] = f"Marked {changed} application(s) as no response."
+        st.session_state["application_bulk_success_message"] = f"Marked {changed} application(s) as waiting."
         st.rerun()
     if bulk_col_d.button(
         "Set follow-up for selected",
@@ -719,9 +1128,7 @@ def render_applications(applications: list[dict]) -> None:
         )
         st.session_state["application_bulk_success_message"] = f"Set follow-up for {changed} application(s)."
         st.rerun()
-    bulk_col_d.caption(
-        "Select rows in the table, then apply one bulk action. Archive uses No Response and clears active follow-ups."
-    )
+    bulk_col_d.caption("Select rows in the table, then apply one bulk action. These actions do not delete records.")
 
     label_id_map = _application_label_id_map(filtered_applications)
     edit_labels = list(label_id_map.keys())
@@ -735,6 +1142,64 @@ def render_applications(applications: list[dict]) -> None:
     selected = next(item for item in applications if item["id"] == selected_id)
     key_prefix = f"edit_{selected_id}"
 
+    st.markdown("**Quick update**")
+    with st.form(f"quick_update_application_form_{selected_id}"):
+        quick_col_a, quick_col_b, quick_col_c = st.columns([1, 2, 1])
+        quick_status_index = STATUS_OPTIONS.index(selected["status"]) if selected["status"] in STATUS_OPTIONS else 0
+        quick_status = quick_col_a.selectbox(
+            "Status",
+            STATUS_OPTIONS,
+            index=quick_status_index,
+            key=f"quick_{selected_id}_status",
+        )
+        quick_next_action = quick_col_b.text_input(
+            "Next action",
+            value=selected.get("next_action", ""),
+            key=f"quick_{selected_id}_next_action",
+        )
+        quick_keep_follow_up = quick_col_c.checkbox(
+            "Keep follow-up",
+            value=bool(selected.get("follow_up_date")),
+            key=f"quick_{selected_id}_keep_follow_up",
+        )
+        quick_follow_up = quick_col_c.date_input(
+            "Follow-up date",
+            value=_text_to_date(selected.get("follow_up_date")) or date.today(),
+            disabled=not quick_keep_follow_up,
+            key=f"quick_{selected_id}_follow_up",
+        )
+        quick_notes = st.text_area("Notes", value=selected.get("notes", ""), key=f"quick_{selected_id}_notes")
+
+        if st.form_submit_button("Save quick update"):
+            update_application(
+                selected_id,
+                {
+                    **selected,
+                    "status": quick_status,
+                    "next_action": quick_next_action,
+                    "follow_up_date": quick_follow_up.isoformat() if quick_keep_follow_up else "",
+                    "notes": quick_notes,
+                },
+                source="manual_quick_update",
+            )
+            st.success("Quick update saved.")
+            st.rerun()
+
+    quick_button_cols = st.columns(4)
+    if quick_button_cols[0].button("Mark as Rejected", key=f"quick_mark_rejected_{selected_id}"):
+        _quick_set_status(selected_id, selected, "Rejected")
+        st.rerun()
+    if quick_button_cols[1].button("Mark as Waiting", key=f"quick_mark_waiting_{selected_id}"):
+        _quick_set_status(selected_id, selected, "Waiting")
+        st.rerun()
+    if quick_button_cols[2].button("Mark as Action Needed", key=f"quick_mark_action_needed_{selected_id}"):
+        _quick_set_status(selected_id, selected, "Action Needed")
+        st.rerun()
+    if quick_button_cols[3].button("Clear Follow-up", key=f"quick_clear_follow_up_{selected_id}"):
+        update_application(selected_id, {**selected, "follow_up_date": ""}, source="manual_clear_follow_up")
+        st.rerun()
+
+    st.markdown("**Detailed edit**")
     with st.form("edit_application_form"):
         col_a, col_b, col_c = st.columns(3)
         company = col_a.text_input("Company", value=selected["company"], key=f"{key_prefix}_company")
@@ -807,6 +1272,126 @@ def render_applications(applications: list[dict]) -> None:
 
     st.subheader("Activity Log")
     render_activity_log(selected_id)
+
+
+def _render_pending_duplicate_resolution(applications: list[dict]) -> None:
+    payload = st.session_state.get("pending_duplicate_payload")
+    candidate_ids = st.session_state.get("pending_duplicate_candidate_ids", [])
+    if not isinstance(payload, dict) or not candidate_ids:
+        return
+
+    applications_by_id = {int(application["id"]): application for application in applications}
+    candidates = [
+        applications_by_id[application_id] for application_id in candidate_ids if application_id in applications_by_id
+    ]
+    if not candidates:
+        st.session_state.pop("pending_duplicate_payload", None)
+        st.session_state.pop("pending_duplicate_candidate_ids", None)
+        return
+
+    st.warning("Possible duplicate application detected.")
+    st.caption("No record will be deleted. You can update an existing record or create the new record anyway.")
+    for candidate in candidates:
+        candidate_match = find_likely_duplicate_applications(payload, [candidate])
+        match_label = (
+            format_duplicate_candidate(candidate_match[0])
+            if candidate_match
+            else (f"{candidate.get('company', '')} / {candidate.get('role', '')}")
+        )
+        st.write(f"Suggested existing record: {match_label}")
+        update_col, create_col, cancel_col = st.columns([1.2, 1.2, 3])
+        if update_col.button(f"Update #{candidate['id']}", key=f"duplicate_update_{candidate['id']}"):
+            update_application(
+                int(candidate["id"]),
+                _merge_application_payload_for_update(candidate, payload),
+                source="manual_duplicate_resolution",
+            )
+            st.session_state.pop("pending_duplicate_payload", None)
+            st.session_state.pop("pending_duplicate_candidate_ids", None)
+            st.session_state.pop("add_application_prefill", None)
+            st.success("Existing application updated instead of creating a duplicate.")
+            st.rerun()
+        if create_col.button("Create new anyway", key=f"duplicate_create_anyway_{candidate['id']}"):
+            create_application(payload, source="manual_duplicate_override")
+            st.session_state.pop("pending_duplicate_payload", None)
+            st.session_state.pop("pending_duplicate_candidate_ids", None)
+            st.session_state.pop("add_application_prefill", None)
+            st.success("New application created after duplicate review.")
+            st.rerun()
+        if cancel_col.button("Cancel duplicate review", key=f"duplicate_cancel_{candidate['id']}"):
+            st.session_state.pop("pending_duplicate_payload", None)
+            st.session_state.pop("pending_duplicate_candidate_ids", None)
+            st.rerun()
+
+
+def _merge_application_payload_for_update(existing: dict, incoming: dict) -> dict:
+    merged = dict(existing)
+    for column in [
+        "company",
+        "role",
+        "location",
+        "application_date",
+        "status",
+        "source_link",
+        "contact",
+        "rejection_reason",
+        "next_action",
+        "follow_up_date",
+    ]:
+        incoming_value = str(incoming.get(column, "") or "").strip()
+        if incoming_value:
+            merged[column] = incoming_value
+    merged["notes"] = _join_notes(existing.get("notes", ""), incoming.get("notes", ""))
+    return merged
+
+
+def _join_notes(existing_notes: object, incoming_notes: object) -> str:
+    notes: list[str] = []
+    for value in [existing_notes, incoming_notes]:
+        for part in str(value or "").split(" | "):
+            cleaned = part.strip()
+            if cleaned and cleaned not in notes:
+                notes.append(cleaned)
+    return " | ".join(notes)
+
+
+def _find_existing_duplicate_pairs(applications: list[dict]) -> list[dict]:
+    pairs: list[dict] = []
+    seen: set[tuple[int, int]] = set()
+    for application in applications:
+        application_id = int(application["id"])
+        candidates = find_likely_duplicate_applications(
+            application,
+            [item for item in applications if int(item["id"]) != application_id],
+            limit=3,
+        )
+        for candidate in candidates:
+            other = candidate["application"]
+            other_id = int(other["id"])
+            pair_key = tuple(sorted((application_id, other_id)))
+            if pair_key in seen:
+                continue
+            seen.add(pair_key)
+            pairs.append(
+                {
+                    "Record A": f"#{application_id} {application.get('company', '')} / {application.get('role', '')}",
+                    "Record B": f"#{other_id} {other.get('company', '')} / {other.get('role', '')}",
+                    "Similarity": f"{float(candidate['score']):.0%}",
+                    "Reason": candidate["reason"],
+                }
+            )
+    return pairs[:20]
+
+
+def _render_duplicate_review_pairs() -> None:
+    pairs = st.session_state.get("duplicate_review_pairs")
+    if pairs is None:
+        return
+    if not pairs:
+        st.info("No likely duplicate records found.")
+        return
+    st.warning("Likely duplicates found. Review and update the correct record manually; nothing was deleted.")
+    st.dataframe(pd.DataFrame(pairs), use_container_width=True, hide_index=True)
 
 
 def _render_application_note_intake() -> None:
@@ -956,6 +1541,19 @@ def _apply_bulk_application_action(
         )
         changed += 1
     return changed
+
+
+def _quick_set_status(application_id: int, application: dict, status: str) -> None:
+    payload = {
+        **application,
+        "status": status,
+        "next_action": DEFAULT_NEXT_ACTION_BY_STATUS.get(status, application.get("next_action", "")),
+    }
+    if status == "Action Needed":
+        payload["follow_up_date"] = date.today().isoformat()
+    if status in {"Rejected", "Waiting"}:
+        payload["follow_up_date"] = ""
+    update_application(application_id, payload, source="manual_quick_status")
 
 
 def _option_index(options: list[str], value: str) -> int:

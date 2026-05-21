@@ -68,7 +68,7 @@ def test_stale_only_uses_due_follow_up_or_waiting_rules() -> None:
     applications = [
         _application(company="Due", application_date="2026-05-10", follow_up_date="2026-05-14"),
         _application(id=2, company="Old", application_date="2026-04-20"),
-        _application(id=3, company="Closed", application_date="2026-04-20", status="No Response"),
+        _application(id=3, company="Closed", application_date="2026-04-20", status="Rejected"),
         _application(id=4, company="Fresh", application_date="2026-05-10"),
     ]
 
@@ -81,7 +81,7 @@ def test_stale_only_uses_due_follow_up_or_waiting_rules() -> None:
 def test_bulk_archive_marks_record_inactive() -> None:
     payload = build_bulk_update_payload(_application(status="Applied", follow_up_date="2026-05-15"), "archive")
 
-    assert payload["status"] == "No Response"
+    assert payload["status"] == "Waiting"
     assert payload["next_action"] == ARCHIVED_NEXT_ACTION
     assert payload["follow_up_date"] == ""
 
@@ -92,7 +92,7 @@ def test_bulk_mark_no_response_clears_follow_up() -> None:
         "mark_no_response",
     )
 
-    assert payload["status"] == "No Response"
+    assert payload["status"] == "Waiting"
     assert payload["next_action"] == NO_RESPONSE_NEXT_ACTION
     assert payload["follow_up_date"] == ""
 

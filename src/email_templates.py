@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
+from src.models import normalize_status
+
 TEMPLATE_TYPES = [
     "Follow-up Email",
     "Interview Thank-you Email",
@@ -14,12 +16,12 @@ TEMPLATE_LANGUAGES = ["English", "German", "Chinese"]
 
 
 def suggest_template_type(application: dict[str, Any]) -> str:
-    status = str(application.get("status", ""))
-    if status == "Interview Scheduled":
+    status = normalize_status(application.get("status"))
+    if status == "Interview / Assessment":
         return "Interview Thank-you Email"
     if status == "Rejected":
         return "Rejection Acknowledgement Email"
-    if status in {"Saved", "No Response"}:
+    if status == "Action Needed":
         return "Recruiter Outreach Email"
     return "Follow-up Email"
 

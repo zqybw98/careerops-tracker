@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from src.models import APPLICATION_COLUMNS, STATUS_OPTIONS
+from src.models import APPLICATION_COLUMNS, normalize_status
 
 
 @dataclass(frozen=True)
@@ -200,7 +200,7 @@ def _finalize_row(row: dict[str, str]) -> dict[str, str]:
     finalized["status"] = _normalize_status(raw_status)
     finalized["next_action"] = finalized["next_action"] or _suggest_next_action(finalized["status"])
 
-    if raw_status and raw_status not in STATUS_OPTIONS and raw_status != finalized["status"]:
+    if raw_status and raw_status.casefold() != finalized["status"].casefold():
         finalized["notes"] = _join_notes([finalized["notes"], f"Original status: {raw_status}"])
     return finalized
 
@@ -213,21 +213,21 @@ def _normalize_status(value: str) -> str:
     if any(keyword in text for keyword in ["rejected", "拒信", "已收到拒信", "absage"]):
         return "Rejected"
     if any(keyword in text for keyword in ["assessment", "coding test", "online test", "在线测评", "测评"]):
-        return "Assessment"
+        return "Interview / Assessment"
     if any(keyword in text for keyword in ["interview", "面试"]):
-        return "Interview Scheduled"
+        return "Interview / Assessment"
     if any(keyword in text for keyword in ["confirmation received", "确认收到", "已确认收到", "收到申请确认"]):
-        return "Confirmation Received"
+        return "Waiting"
     if any(keyword in text for keyword in ["follow-up", "follow up", "待跟进"]):
-        return "Follow-up Needed"
+        return "Waiting"
     if any(keyword in text for keyword in ["offer", "录用"]):
-        return "Offer"
+        return "Action Needed"
     if any(keyword in text for keyword in ["submitted", "applied", "email sent", "已申请", "投递"]):
         return "Applied"
     if any(keyword in text for keyword in ["岗位取消", "cancelled", "canceled", "withdrawn"]):
-        return "No Response"
+        return "Waiting"
 
-    return value if value in STATUS_OPTIONS else "Applied"
+    return normalize_status(value)
 
 
 def _normalize_date(value: str) -> str:
@@ -245,15 +245,11 @@ def _normalize_date(value: str) -> str:
 
 def _suggest_next_action(status: str) -> str:
     suggestions = {
-        "Saved": "Decide whether to apply.",
-        "Applied": "Wait for response and follow up if needed.",
-        "Confirmation Received": "Wait for the next response and follow up if needed.",
-        "Interview Scheduled": "Prepare interview notes and confirm logistics.",
-        "Assessment": "Complete assessment and check the deadline.",
-        "Offer": "Review offer details and decide next step.",
+        "Applied": "Wait",
+        "Waiting": "Wait",
+        "Interview / Assessment": "Prepare for the interview or assessment.",
+        "Action Needed": "Review and act today.",
         "Rejected": "Capture lessons learned.",
-        "No Response": "Consider follow-up or archive the application.",
-        "Follow-up Needed": "Send or prepare a polite follow-up.",
     }
     return suggestions.get(status, "")
 

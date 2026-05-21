@@ -66,7 +66,7 @@ def test_loads_reminder_rules_from_config() -> None:
 def test_loads_job_post_rules_from_config() -> None:
     config = get_job_post_config()
 
-    assert config["default_status"] == "Saved"
+    assert config["default_status"] == "Applied"
     assert "linkedin" in config["job_board_domains"]
     assert config["next_actions"]["with_deadline"]
 
@@ -207,12 +207,12 @@ def _valid_reminder_config() -> dict[str, Any]:
             "stale_application": {
                 **base_rule,
                 "minimum_days_open": 14,
-                "statuses": ["Applied", "Confirmation Received"],
+                "statuses": ["Applied", "Waiting"],
             },
             "weekly_follow_up": {
                 **base_rule,
                 "minimum_days_open": 7,
-                "statuses": ["Applied", "Confirmation Received"],
+                "statuses": ["Applied", "Waiting"],
             },
             "saved_role": {
                 "priority": "Low",
@@ -225,7 +225,7 @@ def _valid_reminder_config() -> dict[str, Any]:
 
 def _valid_job_post_config() -> dict[str, Any]:
     return {
-        "default_status": "Saved",
+        "default_status": "Applied",
         "job_board_domains": ["linkedin"],
         "common_locations": ["Berlin"],
         "role_keywords": ["engineer"],

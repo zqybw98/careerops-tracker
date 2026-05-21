@@ -42,14 +42,14 @@ def test_create_and_update_application(tmp_path: Path) -> None:
         application_id,
         {
             **applications[0],
-            "status": "Interview Scheduled",
+            "status": "Interview / Assessment",
             "next_action": "Prepare interview notes",
         },
         db_path=db_path,
     )
 
     updated = get_applications(db_path)[0]
-    assert updated["status"] == "Interview Scheduled"
+    assert updated["status"] == "Interview / Assessment"
     assert updated["next_action"] == "Prepare interview notes"
     update_events = get_application_events(application_id, db_path)
     assert any(event["event_type"] == "status_changed" for event in update_events)
@@ -78,6 +78,8 @@ def test_rejection_reason_is_tracked_in_activity_log(tmp_path: Path) -> None:
             "application_date": "2026-05-07",
             "status": "Rejected",
             "rejection_reason": "Position closed after application review.",
+            "next_action": "Capture lessons learned",
+            "follow_up_date": "2026-05-14",
         },
         db_path=db_path,
     )
@@ -86,6 +88,8 @@ def test_rejection_reason_is_tracked_in_activity_log(tmp_path: Path) -> None:
     events = get_application_events(application_id, db_path)
 
     assert updated["rejection_reason"] == "Position closed after application review."
+    assert updated["next_action"] == "No action"
+    assert updated["follow_up_date"] == ""
     assert any(event["event_type"] == "rejection_reason_changed" for event in events)
 
 
@@ -119,7 +123,7 @@ def test_init_db_migrates_rejection_reason_column(tmp_path: Path) -> None:
         versions = [row[0] for row in connection.execute("SELECT version FROM schema_version ORDER BY version")]
 
     assert "rejection_reason" in columns
-    assert versions == [1, 2, 3, 4]
+    assert versions == [1, 2, 3, 4, 5]
 
 
 def test_init_db_records_versioned_migrations(tmp_path: Path) -> None:
@@ -154,6 +158,7 @@ def test_init_db_records_versioned_migrations(tmp_path: Path) -> None:
         (2, "002_add_rejection_reason"),
         (3, "003_add_email_feedback"),
         (4, "004_add_lookup_indexes"),
+        (5, "005_simplify_daily_statuses"),
     ]
 
 
@@ -236,6 +241,7 @@ def test_init_db_baselines_existing_schema_without_rerunning_migrations(tmp_path
         (2, "002_add_rejection_reason"),
         (3, "003_add_email_feedback"),
         (4, "004_add_lookup_indexes"),
+        (5, "005_simplify_daily_statuses"),
     ]
     assert rejection_columns == ["rejection_reason"]
     assert feedback_table is not None
@@ -259,9 +265,9 @@ def test_create_and_read_email_feedback(tmp_path: Path) -> None:
             "email_signature": "sap qa engineer interview",
             "subject": "Interview update",
             "predicted_category": "Application Confirmation",
-            "predicted_status": "Confirmation Received",
+            "predicted_status": "Waiting",
             "corrected_category": "Interview Invitation",
-            "corrected_status": "Interview Scheduled",
+            "corrected_status": "Interview / Assessment",
             "corrected_application_id": application_id,
             "corrected_company": "SAP",
             "corrected_role": "QA Engineer",

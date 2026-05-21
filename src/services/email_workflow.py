@@ -26,7 +26,7 @@ from src.email_parser import (
     match_application_from_email,
     rank_application_matches_from_email,
 )
-from src.models import STATUS_OPTIONS
+from src.models import STATUS_OPTIONS, normalize_status
 
 
 def classify_email_for_workflow(
@@ -96,7 +96,12 @@ def record_email_feedback(
     category = (
         corrected_category if corrected_category in get_email_category_options() else str(classification["category"])
     )
-    status = corrected_status if corrected_status in STATUS_OPTIONS else str(classification["suggested_status"])
+    normalized_status = normalize_status(corrected_status)
+    status = (
+        normalized_status
+        if normalized_status in STATUS_OPTIONS
+        else normalize_status(classification["suggested_status"])
+    )
     return create_email_feedback(
         {
             "email_signature": build_email_signature(subject, body, details),
@@ -327,6 +332,8 @@ def _build_email_note(classification: dict[str, Any], details: dict[str, str]) -
     note_parts = [
         f"Email classified as {classification['category']} with {classification['confidence']:.0%} confidence."
     ]
+    if classification.get("suggested_status") == "Rejected":
+        note_parts.append(f"Rejection received by email on {date.today().isoformat()}.")
     extracted_parts = [
         f"{label}: {details[value]}"
         for label, value in [

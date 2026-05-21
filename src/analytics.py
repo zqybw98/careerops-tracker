@@ -5,21 +5,17 @@ from datetime import date, datetime
 from typing import Any
 
 from src.config_loader import get_email_parser_config
-from src.models import CLOSED_STATUSES
+from src.models import CLOSED_STATUSES, normalize_status
 
 RESPONDED_STATUSES = {
-    "Confirmation Received",
-    "Interview Scheduled",
-    "Assessment",
-    "Offer",
+    "Waiting",
+    "Interview / Assessment",
+    "Action Needed",
     "Rejected",
-    "Follow-up Needed",
 }
 
 INTERVIEW_CONVERSION_STATUSES = {
-    "Interview Scheduled",
-    "Assessment",
-    "Offer",
+    "Interview / Assessment",
 }
 
 FUNNEL_STAGES = (
@@ -27,19 +23,15 @@ FUNNEL_STAGES = (
         "Submitted",
         {
             "Applied",
-            "Confirmation Received",
-            "Interview Scheduled",
-            "Assessment",
-            "Offer",
+            "Waiting",
+            "Interview / Assessment",
+            "Action Needed",
             "Rejected",
-            "No Response",
-            "Follow-up Needed",
         },
     ),
     ("First response", RESPONDED_STATUSES),
-    ("Interview", {"Interview Scheduled", "Assessment", "Offer"}),
-    ("Assessment", {"Assessment", "Offer"}),
-    ("Offer", {"Offer"}),
+    ("Interview / Assessment", {"Interview / Assessment"}),
+    ("Action needed", {"Action Needed"}),
 )
 
 UNSPECIFIED_REJECTION_REASON = "Unspecified / not recorded"
@@ -231,11 +223,11 @@ def build_stale_pipeline_breakdown(
 
 
 def build_saved_vs_applied_summary(applications: list[dict[str, Any]]) -> list[dict[str, int | str]]:
-    saved = sum(1 for item in applications if _status(item) == "Saved")
-    submitted = len(applications) - saved
+    applied = sum(1 for item in applications if _status(item) == "Applied")
+    submitted = len(applications) - applied
     return [
-        {"stage": "Saved only", "applications": saved},
-        {"stage": "Submitted / active", "applications": submitted},
+        {"stage": "Applied", "applications": applied},
+        {"stage": "Active workflow", "applications": submitted},
     ]
 
 
@@ -423,7 +415,7 @@ def _safe_rate(numerator: int, denominator: int) -> float:
 
 
 def _status(application: dict[str, Any]) -> str:
-    return str(application.get("status") or "Applied")
+    return normalize_status(application.get("status"))
 
 
 def _is_open(application: dict[str, Any]) -> bool:
@@ -449,15 +441,11 @@ def _stale_bucket(days: int | None) -> str:
 
 def _follow_up_outcome(application: dict[str, Any]) -> str:
     status = _status(application)
-    if status == "Offer":
-        return "Offer after follow-up"
-    if status in {"Interview Scheduled", "Assessment"}:
+    if status == "Interview / Assessment":
         return "Interview or assessment"
     if status == "Rejected":
         return "Rejected after follow-up"
-    if status == "No Response":
-        return "No response / archived"
-    if status in {"Confirmation Received", "Follow-up Needed"}:
+    if status in {"Waiting", "Action Needed"}:
         return "Response or active follow-up"
     return "Still waiting"
 
@@ -471,7 +459,10 @@ def _first_response_dates_by_application(
         application_id = _event_application_id(event)
         if application_id is None or application_id in response_dates:
             continue
-        if event.get("event_type") == "status_changed" and str(event.get("new_value") or "") in RESPONDED_STATUSES:
+        if (
+            event.get("event_type") == "status_changed"
+            and normalize_status(event.get("new_value")) in RESPONDED_STATUSES
+        ):
             event_date = _parse_datetime_date(event.get("created_at"))
             if event_date is not None:
                 response_dates[application_id] = event_date
@@ -496,7 +487,7 @@ def _status_history_by_application(events: list[dict[str, Any]]) -> dict[int, se
         application_id = _event_application_id(event)
         if application_id is None or event.get("event_type") != "status_changed":
             continue
-        new_status = str(event.get("new_value") or "").strip()
+        new_status = normalize_status(event.get("new_value"))
         if new_status:
             history[application_id].add(new_status)
     return history

@@ -111,7 +111,11 @@ def test_waiting_and_stale_metrics_focus_on_open_applications() -> None:
     assert waiting_rows[0]["company"] == "SAP"
     assert waiting_rows[0]["average_waiting_days"] == 11.5
     assert {"bucket": "Stale (14+ days)", "status": "Applied", "applications": 1} in stale_rows
-    assert {"bucket": "Needs follow-up (7-13 days)", "status": "Interview Scheduled", "applications": 1} in stale_rows
+    assert {
+        "bucket": "Needs follow-up (7-13 days)",
+        "status": "Interview / Assessment",
+        "applications": 1,
+    } in stale_rows
 
 
 def test_monthly_volume_saved_conversion_and_source_inference() -> None:
@@ -149,8 +153,8 @@ def test_monthly_volume_saved_conversion_and_source_inference() -> None:
         {"month": "May 2026", "applications": 3},
     ]
     assert saved_rows == [
-        {"stage": "Saved only", "applications": 1},
-        {"stage": "Submitted / active", "applications": 2},
+        {"stage": "Applied", "applications": 3},
+        {"stage": "Active workflow", "applications": 0},
     ]
 
 
@@ -267,7 +271,7 @@ def test_follow_up_effectiveness_groups_current_outcomes() -> None:
     rows = build_follow_up_effectiveness(applications, events)
 
     assert {"outcome": "Interview or assessment", "applications": 1, "share": 0.5} in rows
-    assert {"outcome": "No response / archived", "applications": 1, "share": 0.5} in rows
+    assert {"outcome": "Response or active follow-up", "applications": 1, "share": 0.5} in rows
 
 
 def test_interview_to_offer_funnel_uses_historical_statuses() -> None:
@@ -284,11 +288,10 @@ def test_interview_to_offer_funnel_uses_historical_statuses() -> None:
     rows = build_interview_to_offer_funnel(applications, events)
     by_stage = {row["stage"]: row for row in rows}
 
-    assert by_stage["Submitted"]["applications"] == 2
+    assert by_stage["Submitted"]["applications"] == 3
     assert by_stage["First response"]["applications"] == 2
-    assert by_stage["Interview"]["applications"] == 2
-    assert by_stage["Assessment"]["applications"] == 2
-    assert by_stage["Offer"]["applications"] == 1
+    assert by_stage["Interview / Assessment"]["applications"] == 1
+    assert by_stage["Action needed"]["applications"] == 1
 
 
 def test_channel_role_type_matrix_combines_source_and_role_type() -> None:
