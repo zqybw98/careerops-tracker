@@ -130,7 +130,7 @@ def test_export_includes_optional_company_research_table_when_present(tmp_path: 
     with sqlite3.connect(db_path) as connection:
         connection.executescript(
             """
-            CREATE TABLE company_research_notes (
+            CREATE TABLE IF NOT EXISTS company_research_notes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company TEXT NOT NULL,
                 checked_at TEXT NOT NULL,
