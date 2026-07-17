@@ -25,9 +25,11 @@ from src.application_note_parser import parse_application_note
 from src.dashboard import build_daily_dashboard_sections, build_summary, filter_dashboard_applications
 from src.database import (
     create_application,
+    create_company_research_note,
     delete_application,
     get_application_events,
     get_applications,
+    get_company_research_notes,
     init_db,
     update_application,
 )
@@ -1012,6 +1014,7 @@ def render_applications(applications: list[dict]) -> None:
                     st.rerun()
 
     _render_pending_duplicate_resolution(applications)
+    _render_company_explorer(applications)
 
     st.subheader("Manage Applications")
     if not applications:
@@ -1274,6 +1277,139 @@ def render_applications(applications: list[dict]) -> None:
     render_activity_log(selected_id)
 
 
+def _render_company_explorer(applications: list[dict]) -> None:
+    stored_message = st.session_state.pop("company_watch_success_message", None)
+    if stored_message:
+        st.success(stored_message)
+
+    with st.expander("Company Explorer / company watch"):
+        st.caption(
+            "Search a company or role, review previous applications, and record career-page checks "
+            "when there are no suitable openings yet."
+        )
+        query = st.text_input("Search company or position", key="company_explorer_query")
+        matching_applications = _matching_company_applications(applications, query)
+        company_options = _company_input_options(matching_applications or applications, query)
+        selected_company = st.selectbox(
+            "Company to inspect",
+            company_options,
+            index=_option_index(company_options, query),
+            accept_new_options=True,
+            key="company_explorer_selected_company",
+        )
+        selected_company_text = str(selected_company or "").strip()
+        related_applications = (
+            _matching_company_applications(applications, selected_company_text, company_only=True)
+            if selected_company_text
+            else matching_applications[:10]
+        )
+
+        if related_applications:
+            summary_cols = st.columns(4)
+            summary_cols[0].metric("Applications", len(related_applications))
+            summary_cols[1].metric(
+                "Active",
+                sum(1 for item in related_applications if item.get("status") != "Rejected"),
+            )
+            summary_cols[2].metric(
+                "Rejected",
+                sum(1 for item in related_applications if item.get("status") == "Rejected"),
+            )
+            summary_cols[3].metric(
+                "Latest date",
+                max(str(item.get("application_date", "") or "-") for item in related_applications),
+            )
+            company_df = with_display_sequence(pd.DataFrame(related_applications))
+            st.dataframe(
+                company_df[
+                    [
+                        "#",
+                        "company",
+                        "role",
+                        "location",
+                        "application_date",
+                        "status",
+                        "next_action",
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("No matching applications yet. You can still record a company check below.")
+
+        research_query = selected_company_text or query
+        research_notes = get_company_research_notes(research_query, limit=20) if research_query else []
+        if research_notes:
+            st.markdown("**Company check history**")
+            st.dataframe(
+                pd.DataFrame(research_notes)[
+                    [
+                        "checked_at",
+                        "company",
+                        "decision",
+                        "relevant_roles",
+                        "skipped_roles",
+                        "notes",
+                        "source_link",
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True,
+            )
+
+        st.markdown("**Record company check**")
+        with st.form("company_research_note_form", clear_on_submit=True):
+            form_col_a, form_col_b, form_col_c = st.columns([1.4, 1, 1.2])
+            company = form_col_a.selectbox(
+                "Company",
+                _company_input_options(applications, selected_company_text or query),
+                index=0,
+                accept_new_options=True,
+                key="company_research_company",
+            )
+            checked_at = form_col_b.date_input("Checked date", value=date.today())
+            decision = form_col_c.selectbox(
+                "Decision",
+                [
+                    "No suitable role today",
+                    "Potential roles found",
+                    "Applied",
+                    "Follow up later",
+                    "Other",
+                ],
+            )
+            relevant_roles = st.text_area(
+                "Potential roles found",
+                placeholder="Optional. Paste roles that may be relevant later.",
+            )
+            skipped_roles = st.text_area(
+                "Skipped / not suitable roles",
+                placeholder="Paste roles you checked but decided not to apply for, plus short reasons.",
+            )
+            source_link = st.text_input("Career page / source link")
+            notes = st.text_area("Notes", placeholder="Example: no Junior IT Support / QA role today.")
+
+            if st.form_submit_button("Save company check"):
+                if not str(company or "").strip():
+                    st.error("Company is required before saving a company check.")
+                    return
+                create_company_research_note(
+                    {
+                        "company": company,
+                        "checked_at": checked_at.isoformat(),
+                        "decision": decision,
+                        "relevant_roles": relevant_roles,
+                        "skipped_roles": skipped_roles,
+                        "summary": _company_research_summary(decision, relevant_roles, skipped_roles),
+                        "notes": notes,
+                        "source_link": source_link,
+                    }
+                )
+                st.session_state["company_watch_success_message"] = f"Saved company check for {company}."
+                st.rerun()
+
+
 def _render_pending_duplicate_resolution(applications: list[dict]) -> None:
     payload = st.session_state.get("pending_duplicate_payload")
     candidate_ids = st.session_state.get("pending_duplicate_candidate_ids", [])
@@ -1463,6 +1599,57 @@ def render_activity_log(application_id: int) -> None:
         ]
     ]
     st.dataframe(event_df, use_container_width=True, hide_index=True)
+
+
+def _company_input_options(applications: list[dict], preferred: object = "") -> list[str]:
+    options: list[str] = []
+    preferred_text = str(preferred or "").strip()
+    if preferred_text:
+        options.append(preferred_text)
+    else:
+        options.append("")
+
+    for application in applications:
+        company = str(application.get("company", "") or "").strip()
+        if company and company not in options:
+            options.append(company)
+    return options
+
+
+def _matching_company_applications(
+    applications: list[dict],
+    query: object,
+    company_only: bool = False,
+) -> list[dict]:
+    query_text = str(query or "").casefold().strip()
+    if not query_text:
+        return applications[:10]
+
+    matched: list[dict] = []
+    for application in applications:
+        company = str(application.get("company", "") or "")
+        role = str(application.get("role", "") or "")
+        notes = str(application.get("notes", "") or "")
+        source = str(application.get("source_link", "") or "")
+        haystack = company if company_only else " ".join([company, role, notes, source])
+        if query_text in haystack.casefold():
+            matched.append(application)
+    return matched
+
+
+def _company_research_summary(decision: str, relevant_roles: str, skipped_roles: str) -> str:
+    relevant_count = _non_empty_line_count(relevant_roles)
+    skipped_count = _non_empty_line_count(skipped_roles)
+    parts = [decision]
+    if relevant_count:
+        parts.append(f"{relevant_count} possible role(s)")
+    if skipped_count:
+        parts.append(f"{skipped_count} skipped role(s)")
+    return " | ".join(parts)
+
+
+def _non_empty_line_count(value: str) -> int:
+    return sum(1 for line in str(value or "").splitlines() if line.strip())
 
 
 def _application_label_id_map(applications: list[dict]) -> dict[str, int]:

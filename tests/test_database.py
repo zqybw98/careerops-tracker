@@ -1,18 +1,30 @@
 import sqlite3
 from pathlib import Path
 
+import pytest
 from src.database import (
+    MIGRATIONS_DIR,
     create_application,
+    create_company_research_note,
     create_email_feedback,
     deduplicate_applications,
     get_application_events,
     get_applications,
+    get_company_research_notes,
     get_email_feedback,
     init_db,
     preview_application_sync,
     sync_applications,
     update_application,
 )
+
+
+def _expected_migrations() -> list[tuple[int, str]]:
+    return [(int(path.stem.split("_", 1)[0]), path.stem) for path in sorted(MIGRATIONS_DIR.glob("*.sql"))]
+
+
+def _company_research_indexes(connection: sqlite3.Connection) -> set[str]:
+    return {row[1] for row in connection.execute("PRAGMA index_list(company_research_notes)").fetchall()}
 
 
 def test_create_and_update_application(tmp_path: Path) -> None:
@@ -123,7 +135,7 @@ def test_init_db_migrates_rejection_reason_column(tmp_path: Path) -> None:
         versions = [row[0] for row in connection.execute("SELECT version FROM schema_version ORDER BY version")]
 
     assert "rejection_reason" in columns
-    assert versions == [1, 2, 3, 4, 5]
+    assert versions == [version for version, _ in _expected_migrations()]
 
 
 def test_init_db_records_versioned_migrations(tmp_path: Path) -> None:
@@ -151,15 +163,104 @@ def test_init_db_records_versioned_migrations(tmp_path: Path) -> None:
             """
         ).fetchall()
 
-    assert {"applications", "application_events", "email_feedback", "schema_version"} <= tables
+    assert {
+        "applications",
+        "application_events",
+        "company_research_notes",
+        "email_feedback",
+        "schema_version",
+    } <= tables
     assert "rejection_reason" in application_columns
-    assert versions == [
-        (1, "001_init"),
-        (2, "002_add_rejection_reason"),
-        (3, "003_add_email_feedback"),
-        (4, "004_add_lookup_indexes"),
-        (5, "005_simplify_daily_statuses"),
-    ]
+    assert versions == _expected_migrations()
+
+
+def test_init_db_creates_company_research_table_and_indexes(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+
+    init_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        table = connection.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'company_research_notes'
+            """
+        ).fetchone()
+        indexes = _company_research_indexes(connection)
+        version = connection.execute("SELECT COUNT(*) FROM schema_version WHERE version = 6").fetchone()[0]
+
+    assert table is not None
+    assert {
+        "idx_company_research_checked_at",
+        "idx_company_research_company",
+    } <= indexes
+    assert version == 1
+
+
+def test_init_db_upgrades_schema_version_5_to_6(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    init_db(db_path)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("DELETE FROM schema_version WHERE version = 6")
+        connection.execute("DROP TABLE company_research_notes")
+
+    init_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        indexes = _company_research_indexes(connection)
+        version_count = connection.execute("SELECT COUNT(*) FROM schema_version WHERE version = 6").fetchone()[0]
+
+    assert {
+        "idx_company_research_checked_at",
+        "idx_company_research_company",
+    } <= indexes
+    assert version_count == 1
+
+
+@pytest.mark.parametrize(
+    "missing_index",
+    ["idx_company_research_company", "idx_company_research_checked_at"],
+)
+def test_init_db_repairs_incomplete_company_research_indexes(
+    tmp_path: Path,
+    missing_index: str,
+) -> None:
+    db_path = tmp_path / "applications.db"
+    init_db(db_path)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("DELETE FROM schema_version WHERE version = 6")
+        connection.execute(f"DROP INDEX {missing_index}")
+
+    init_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        indexes = _company_research_indexes(connection)
+        version_count = connection.execute("SELECT COUNT(*) FROM schema_version WHERE version = 6").fetchone()[0]
+
+    assert {
+        "idx_company_research_checked_at",
+        "idx_company_research_company",
+    } <= indexes
+    assert version_count == 1
+
+
+def test_init_db_keeps_company_research_migration_idempotent(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+
+    init_db(db_path)
+    init_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        indexes = _company_research_indexes(connection)
+        version_count = connection.execute("SELECT COUNT(*) FROM schema_version WHERE version = 6").fetchone()[0]
+
+    assert {
+        "idx_company_research_checked_at",
+        "idx_company_research_company",
+    } <= indexes
+    assert version_count == 1
 
 
 def test_init_db_creates_lookup_indexes(tmp_path: Path) -> None:
@@ -236,15 +337,56 @@ def test_init_db_baselines_existing_schema_without_rerunning_migrations(tmp_path
             """
         ).fetchone()
 
-    assert versions == [
-        (1, "001_init"),
-        (2, "002_add_rejection_reason"),
-        (3, "003_add_email_feedback"),
-        (4, "004_add_lookup_indexes"),
-        (5, "005_simplify_daily_statuses"),
-    ]
+    assert versions == _expected_migrations()
     assert rejection_columns == ["rejection_reason"]
     assert feedback_table is not None
+
+
+def test_create_and_read_company_research_note_without_changing_applications(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "applications.db"
+    init_db(db_path)
+    application_id = create_application(
+        {
+            "company": "Example GmbH",
+            "role": "QA Engineer",
+            "application_date": "2026-07-18",
+            "status": "Applied",
+        },
+        db_path=db_path,
+    )
+
+    note_id = create_company_research_note(
+        {
+            "company": "Siemens AG",
+            "checked_at": "2026-07-18",
+            "decision": "Review later",
+            "relevant_roles": "QA Engineer; Technical Support",
+            "skipped_roles": "Senior Architect",
+            "summary": "No suitable junior opening today.",
+            "notes": "Check the careers page again next month.",
+            "source_link": "https://jobs.siemens.com/",
+        },
+        db_path=db_path,
+    )
+
+    research_notes = get_company_research_notes(
+        company_query="siemens",
+        db_path=db_path,
+    )
+    applications = get_applications(db_path)
+
+    assert len(research_notes) == 1
+    assert research_notes[0]["id"] == note_id
+    assert research_notes[0]["company"] == "Siemens AG"
+    assert research_notes[0]["checked_at"] == "2026-07-18"
+    assert research_notes[0]["decision"] == "Review later"
+    assert research_notes[0]["relevant_roles"] == "QA Engineer; Technical Support"
+    assert research_notes[0]["source_link"] == "https://jobs.siemens.com/"
+    assert len(applications) == 1
+    assert applications[0]["id"] == application_id
+    assert applications[0]["company"] == "Example GmbH"
 
 
 def test_create_and_read_email_feedback(tmp_path: Path) -> None:

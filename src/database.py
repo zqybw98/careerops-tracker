@@ -416,6 +416,71 @@ def get_email_feedback(
     return [dict(row) for row in rows]
 
 
+def create_company_research_note(
+    payload: dict[str, Any],
+    db_path: Path | str = DEFAULT_DB_PATH,
+) -> int:
+    cleaned = _clean_company_research_payload(payload)
+    if not cleaned["company"]:
+        raise ValueError("Company research note requires a company name.")
+
+    now = _now()
+    fields = [
+        "company",
+        "checked_at",
+        "decision",
+        "relevant_roles",
+        "skipped_roles",
+        "summary",
+        "notes",
+        "source_link",
+        "created_at",
+        "updated_at",
+    ]
+    values = [cleaned[field] for field in fields[:-2]] + [now, now]
+
+    with get_connection(db_path) as connection:
+        cursor = connection.execute(
+            f"""
+            INSERT INTO company_research_notes ({", ".join(fields)})
+            VALUES ({", ".join(["?"] * len(fields))})
+            """,
+            values,
+        )
+        if cursor.lastrowid is None:
+            raise RuntimeError("Failed to create company research note.")
+        connection.commit()
+        return cursor.lastrowid
+
+
+def get_company_research_notes(
+    company_query: str = "",
+    db_path: Path | str = DEFAULT_DB_PATH,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    query = """
+        SELECT *
+        FROM company_research_notes
+    """
+    params: list[Any] = []
+    normalized_query = str(company_query or "").strip().casefold()
+    if normalized_query:
+        query += " WHERE lower(company) LIKE ?"
+        params.append(f"%{normalized_query}%")
+    query += """
+        ORDER BY
+            COALESCE(checked_at, '') DESC,
+            updated_at DESC,
+            id DESC
+        LIMIT ?
+    """
+    params.append(limit)
+
+    with get_connection(db_path) as connection:
+        rows = connection.execute(query, params).fetchall()
+    return [dict(row) for row in rows]
+
+
 def _clean_payload(payload: dict[str, Any]) -> dict[str, Any]:
     cleaned: dict[str, Any] = {}
     for column in APPLICATION_COLUMNS:
@@ -427,6 +492,23 @@ def _clean_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
     cleaned["status"] = normalize_status(cleaned["status"])
     return apply_status_business_rules(cleaned)
+
+
+def _clean_company_research_payload(payload: dict[str, Any]) -> dict[str, str]:
+    fields = [
+        "company",
+        "checked_at",
+        "decision",
+        "relevant_roles",
+        "skipped_roles",
+        "summary",
+        "notes",
+        "source_link",
+    ]
+    cleaned: dict[str, str] = {}
+    for field in fields:
+        cleaned[field] = str(payload.get(field, "") or "").strip()
+    return cleaned
 
 
 def _apply_migrations(connection: sqlite3.Connection, db_path: Path) -> None:
@@ -498,6 +580,15 @@ def _migration_is_satisfied(connection: sqlite3.Connection, version: int) -> boo
         )
     if version == 5:
         return _daily_status_migration_satisfied(connection)
+    if version == 6:
+        return (
+            _table_exists(connection, "company_research_notes")
+            and _index_exists(connection, "idx_company_research_company")
+            and _index_exists(
+                connection,
+                "idx_company_research_checked_at",
+            )
+        )
     return False
 
 
