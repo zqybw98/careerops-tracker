@@ -21,7 +21,7 @@ from src.analytics import (
     build_time_to_first_response_by_source,
 )
 from src.application_filters import build_bulk_update_payload, filter_applications
-from src.application_note_parser import parse_application_note
+from src.application_note_parser import build_application_payload, parse_application_note
 from src.dashboard import build_daily_dashboard_sections, build_summary, filter_dashboard_applications
 from src.database import (
     create_application,
@@ -894,7 +894,7 @@ def render_dashboard_recent_editor(applications: list[dict], display_df: pd.Data
 
 def render_applications(applications: list[dict]) -> None:
     st.subheader("Add Application")
-    _render_application_note_intake()
+    _render_application_note_intake(applications)
     prefill = st.session_state.get("add_application_prefill", {})
     prefill_fields = prefill.get("fields", {}) if isinstance(prefill, dict) else {}
     prefill_notes = str(prefill.get("notes", "")) if isinstance(prefill, dict) else ""
@@ -1484,33 +1484,41 @@ def _render_duplicate_review_pairs() -> None:
     st.dataframe(pd.DataFrame(pairs), use_container_width=True, hide_index=True)
 
 
-def _render_application_note_intake() -> None:
+def _render_application_note_intake(applications: list[dict] | None = None) -> None:
     stored_message = st.session_state.pop("application_note_prefill_message", None)
     if stored_message:
         st.success(stored_message)
 
-    with st.expander("Auto-fill from structured application note"):
+    should_expand = bool(
+        stored_message
+        or st.session_state.get("add_application_prefill")
+        or st.session_state.get("pending_duplicate_payload")
+    )
+    with st.expander("ChatGPT Import / auto-add application", expanded=should_expand):
         st.caption(
-            "Paste a short note with labels such as Datum, Company, Position, Location, Status, CV used, "
-            "Cover letter, and Next step. Review the form before adding the record."
+            "Paste JSON, a Markdown code block, or a short labeled note from ChatGPT. "
+            "Import directly when company and role are clear, or extract into the form when you want to review first."
         )
         note_text = st.text_area(
-            "Structured application note",
+            "ChatGPT application record",
             key="structured_application_note_text",
             height=180,
             placeholder=(
-                "Datum: 17.05.2026\n"
-                "Company: EY / Ernst & Young\n"
-                "Position: SAP Innovation Engineer (w/m/d)\n"
-                "Location: Berlin\n"
-                "Status: Applied / Bewerbung abgeschickt\n"
-                "CV used: EY SAP Innovation Engineer 2-page German CV\n"
-                "Cover letter: EY SAP Innovation Engineer German Anschreiben\n"
-                "Next step: Wait for confirmation email; follow up after 5-7 working days."
+                "{\n"
+                '  "company": "EY",\n'
+                '  "role": "SAP Innovation Engineer (w/m/d)",\n'
+                '  "location": "Berlin, Germany",\n'
+                '  "status": "Applied",\n'
+                '  "application_date": "2026-05-17",\n'
+                '  "cv_version": "EY SAP Innovation Engineer 2-page German CV",\n'
+                '  "next_action": "Wait for confirmation email; follow up after 5-7 working days."\n'
+                "}"
             ),
         )
-        action_col, clear_col = st.columns([1, 4])
-        if action_col.button("Extract into form", key="extract_structured_application_note"):
+        import_col, extract_col, clear_col = st.columns([1.2, 1.1, 3])
+        if import_col.button("Import and add directly", key="import_structured_application_note", type="primary"):
+            _import_application_note_directly(note_text, applications or [])
+        if extract_col.button("Extract into form", key="extract_structured_application_note"):
             parsed = parse_application_note(note_text)
             if not parsed["fields"]:
                 st.warning("No structured fields found. Use lines like `Company: SAP` or `Position: QA Engineer`.")
@@ -1534,6 +1542,38 @@ def _render_application_note_intake() -> None:
                 if value
             ]
             st.dataframe(preview_rows, use_container_width=True, hide_index=True)
+
+
+def _import_application_note_directly(note_text: str, applications: list[dict]) -> None:
+    parsed = parse_application_note(note_text)
+    if not parsed["fields"]:
+        st.warning("No structured fields found. Use lines like `Company: SAP` or `Position: QA Engineer`.")
+        return
+
+    payload = build_application_payload(parsed)
+    if not payload["company"] or not payload["role"]:
+        st.session_state["add_application_prefill"] = parsed
+        st.warning("Company and role are required. Extracted fields were saved for manual review.")
+        return
+
+    duplicate_candidates = find_likely_duplicate_applications(payload, applications)
+    if duplicate_candidates:
+        st.session_state["pending_duplicate_payload"] = payload
+        st.session_state["pending_duplicate_candidate_ids"] = [
+            int(candidate["application"]["id"]) for candidate in duplicate_candidates
+        ]
+        st.session_state["add_application_prefill"] = parsed
+        st.warning("Likely duplicate found. Review the suggested existing record before creating a new one.")
+        st.rerun()
+
+    application_id = create_application(payload, source="chatgpt_import")
+    st.session_state.pop("add_application_prefill", None)
+    st.session_state.pop("pending_duplicate_payload", None)
+    st.session_state.pop("pending_duplicate_candidate_ids", None)
+    st.session_state["application_note_prefill_message"] = (
+        f"Imported application #{application_id}: {payload['company']} / {payload['role']}."
+    )
+    st.rerun()
 
 
 def render_activity_log(application_id: int) -> None:

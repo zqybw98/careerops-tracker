@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import date
 from typing import Any
 from urllib.parse import urlparse
 
-from src.models import STATUS_OPTIONS, normalize_status
+from src.models import STATUS_OPTIONS, apply_status_business_rules, normalize_status
 
 FIELD_ALIASES = {
     "application_date": {
         "date",
         "datum",
+        "application_date",
         "application date",
         "applied date",
         "bewerbungsdatum",
@@ -51,6 +53,9 @@ FIELD_ALIASES = {
     },
     "source_link": {
         "source",
+        "source_link",
+        "source url",
+        "source_url",
         "source link",
         "job url",
         "job link",
@@ -67,6 +72,7 @@ FIELD_ALIASES = {
         "联系人",
     },
     "next_action": {
+        "next_action",
         "next step",
         "next action",
         "next",
@@ -77,12 +83,33 @@ FIELD_ALIASES = {
         "下一步",
         "后续",
     },
+    "follow_up_date": {
+        "follow_up_date",
+        "follow up date",
+        "follow-up date",
+        "followup date",
+        "follow up",
+        "follow-up",
+        "next check date",
+        "下次跟进",
+        "跟进日期",
+    },
+    "rejection_reason": {
+        "rejection_reason",
+        "rejection reason",
+        "reason",
+        "reason for rejection",
+        "absagegrund",
+        "拒绝原因",
+    },
 }
 
 NOTE_ALIASES = {
     "CV used": {
         "cv",
         "cv used",
+        "cv_version",
+        "cv version",
         "resume",
         "resume used",
         "lebenslauf",
@@ -95,6 +122,14 @@ NOTE_ALIASES = {
         "motivation",
         "求职信",
         "动机信",
+    },
+    "Notes": {
+        "notes",
+        "note",
+        "remarks",
+        "comment",
+        "notizen",
+        "备注",
     },
 }
 
@@ -129,22 +164,12 @@ def parse_application_note(text: str) -> dict[str, Any]:
     note_lines: list[str] = []
     matched_labels: list[str] = []
 
-    for label, value in _iter_key_value_lines(cleaned_text):
-        normalized_label = _normalize_label(label)
-        field_name = _field_for_label(normalized_label)
-        if field_name:
-            parsed_value = _parse_field_value(field_name, value)
-            if parsed_value:
-                fields[field_name] = parsed_value
-                matched_labels.append(label.strip())
-            continue
-
-        note_label = _note_label_for_label(normalized_label)
-        if note_label:
-            cleaned_value = _trim_value(value)
-            if cleaned_value:
-                note_lines.append(f"{note_label}: {cleaned_value}")
-                matched_labels.append(label.strip())
+    json_mapping = _extract_json_mapping(cleaned_text)
+    if json_mapping:
+        _collect_mapping_values(json_mapping, fields, note_lines, matched_labels)
+    else:
+        for label, value in _iter_key_value_lines(cleaned_text):
+            _collect_labeled_value(label, value, fields, note_lines, matched_labels)
 
     if not fields.get("source_link"):
         fields["source_link"] = _extract_first_url(cleaned_text)
@@ -162,6 +187,30 @@ def parse_application_note(text: str) -> dict[str, Any]:
     }
 
 
+def build_application_payload(
+    parsed: dict[str, Any],
+    *,
+    default_application_date: date | None = None,
+) -> dict[str, str]:
+    fields = parsed.get("fields", {}) if isinstance(parsed, dict) else {}
+    notes = str(parsed.get("notes", "") or "") if isinstance(parsed, dict) else ""
+    fallback_date = default_application_date or date.today()
+    payload = {
+        "company": str(fields.get("company", "") or "").strip(),
+        "role": str(fields.get("role", "") or "").strip(),
+        "location": str(fields.get("location", "") or "").strip(),
+        "application_date": str(fields.get("application_date", "") or "").strip() or fallback_date.isoformat(),
+        "status": normalize_status(fields.get("status", "Applied")),
+        "source_link": str(fields.get("source_link", "") or "").strip(),
+        "contact": str(fields.get("contact", "") or "").strip(),
+        "notes": "" if notes == "Structured note import" else notes,
+        "rejection_reason": str(fields.get("rejection_reason", "") or "").strip(),
+        "next_action": str(fields.get("next_action", "") or "").strip(),
+        "follow_up_date": str(fields.get("follow_up_date", "") or "").strip(),
+    }
+    return apply_status_business_rules(payload)
+
+
 def _iter_key_value_lines(text: str) -> list[tuple[str, str]]:
     entries: list[tuple[str, str]] = []
     for raw_line in text.splitlines():
@@ -174,7 +223,7 @@ def _iter_key_value_lines(text: str) -> list[tuple[str, str]]:
 
 def _parse_field_value(field_name: str, value: str) -> str:
     cleaned_value = _trim_value(value)
-    if field_name == "application_date":
+    if field_name in {"application_date", "follow_up_date"}:
         return _parse_date(cleaned_value)
     if field_name == "status":
         return _normalize_status(cleaned_value)
@@ -226,6 +275,75 @@ def _note_label_for_label(normalized_label: str) -> str:
     return ""
 
 
+def _extract_json_mapping(text: str) -> dict[str, Any]:
+    candidates: list[str] = []
+    for match in re.finditer(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.IGNORECASE | re.DOTALL):
+        candidates.append(match.group(1))
+
+    stripped = text.strip()
+    if stripped.startswith("{") and stripped.endswith("}"):
+        candidates.append(stripped)
+
+    object_match = re.search(r"(\{.*\})", text, flags=re.DOTALL)
+    if object_match:
+        candidates.append(object_match.group(1))
+
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
+
+
+def _collect_mapping_values(
+    mapping: dict[str, Any],
+    fields: dict[str, str],
+    note_lines: list[str],
+    matched_labels: list[str],
+) -> None:
+    for key, value in mapping.items():
+        if isinstance(value, dict | list):
+            string_value = _stringify_value(value)
+        else:
+            string_value = "" if value is None else str(value)
+        _collect_labeled_value(str(key), string_value, fields, note_lines, matched_labels)
+
+
+def _collect_labeled_value(
+    label: str,
+    value: str,
+    fields: dict[str, str],
+    note_lines: list[str],
+    matched_labels: list[str],
+) -> None:
+    normalized_label = _normalize_label(label)
+    field_name = _field_for_label(normalized_label)
+    if field_name:
+        parsed_value = _parse_field_value(field_name, value)
+        if parsed_value:
+            fields[field_name] = parsed_value
+            matched_labels.append(label.strip())
+        return
+
+    note_label = _note_label_for_label(normalized_label)
+    if note_label:
+        cleaned_value = _trim_value(value)
+        if cleaned_value:
+            note_lines.append(f"{note_label}: {cleaned_value}")
+            matched_labels.append(label.strip())
+
+
+def _stringify_value(value: Any) -> str:
+    if isinstance(value, list):
+        return "; ".join(_stringify_value(item) for item in value if item is not None)
+    if isinstance(value, dict):
+        return "; ".join(f"{key}: {_stringify_value(item)}" for key, item in value.items())
+    return str(value)
+
+
 def _summary(fields: dict[str, str]) -> str:
     company = fields.get("company", "")
     role = fields.get("role", "")
@@ -256,11 +374,12 @@ def _safe_iso_date(year: int, month: int, day: int) -> str:
 
 def _trim_value(value: str) -> str:
     candidate = re.split(r"[\n\r<>]", value.strip(), maxsplit=1)[0]
-    return re.sub(r"\s+", " ", candidate).strip(" -:,")
+    return re.sub(r"\s+", " ", candidate).strip(" -:,\"'")
 
 
 def _normalize_label(value: str) -> str:
-    return re.sub(r"\s+", " ", value.casefold().strip().strip(":："))
+    prepared = value.replace("_", " ").replace("-", " ")
+    return re.sub(r"\s+", " ", prepared.casefold().strip().strip(":：\"'"))
 
 
 def _normalize_text(value: str) -> str:
