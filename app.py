@@ -43,11 +43,10 @@ from src.services.email_workflow import (
     build_email_workflow_for_application,
     classify_email_for_workflow,
 )
+from src.ui.applications_page import render_applications_page
 from src.ui.components import render_app_header, with_display_sequence
-from src.ui.contacts_page import render_contacts
-from src.ui.data_settings_page import render_data_tools
-from src.ui.email_assistant_page import render_assistant_workspace
-from src.ui.sidebar import render_sidebar_navigation
+from src.ui.more_page import render_more_page
+from src.ui.sidebar import normalize_workspace, render_sidebar_navigation
 
 DASHBOARD_EDITOR_COLUMNS = [
     "#",
@@ -138,40 +137,28 @@ def main() -> None:
     workspace = render_sidebar_navigation(applications, reminders)
     render_app_header(workspace)
 
-    if workspace == "Overview":
-        render_dashboard(applications, reminders)
-    elif workspace == "Applications":
-        render_applications(applications)
-    elif workspace == "Contacts":
-        render_contacts(applications)
-    elif workspace == "Email Assistant":
-        render_assistant_workspace(applications)
+    if workspace == "Applications":
+        render_applications_page(applications)
+    elif workspace == "Analytics":
+        render_analytics(applications, reminders)
     else:
-        render_data_tools(applications)
+        render_more_page(applications, render_advanced_applications=render_applications)
 
 
-def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
+def render_analytics(applications: list[dict], reminders: list[dict]) -> None:
+    del reminders
+    sections = build_daily_dashboard_sections(applications)
     include_closed = st.toggle(
-        "Include closed applications",
+        "Include closed applications in analytics",
         value=False,
-        key="overview_include_closed_applications",
-        help="Include rejected records in analytics and tables.",
+        key="analytics_include_closed_applications",
+        help="Include rejected records in analytics and charts.",
     )
     visible_applications = filter_dashboard_applications(applications, include_closed=include_closed)
     hidden_closed_count = len(applications) - len(visible_applications)
 
     if not include_closed and hidden_closed_count:
         st.caption(f"Hiding {hidden_closed_count} rejected application(s) from active analytics.")
-
-    pending_action_message = st.session_state.pop("pending_action_success_message", None)
-    if pending_action_message:
-        st.success(pending_action_message)
-
-    sections = build_daily_dashboard_sections(applications)
-    st.subheader("Action Center")
-    _render_action_center(applications, reminders, sections)
-    _render_overview_quick_tools(applications)
-    st.divider()
 
     summary = build_summary(visible_applications)
     pipeline_health = build_pipeline_health(visible_applications)
@@ -187,31 +174,6 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
     else:
         metric_columns[5].metric("Rejected hidden", hidden_closed_count)
 
-    with st.expander("Review detailed workflow lists"):
-        _render_dashboard_section(
-            "Today Action Required",
-            sections["today_actions"],
-            empty_message="Nothing requires action today.",
-        )
-        _render_dashboard_section(
-            "Follow-up Due Soon",
-            sections["due_soon"],
-            empty_message="No follow-ups are due in the next 7 days.",
-        )
-        _render_dashboard_section(
-            "Waiting / Pending Applications",
-            sections["waiting_pending"],
-            empty_message="No active waiting or interview records.",
-            limit=18,
-        )
-        _render_dashboard_section(
-            "Recent Rejections",
-            sections["recent_rejections"],
-            empty_message="No rejected applications recorded yet.",
-            include_rejection_reason=True,
-            limit=8,
-        )
-
     if not visible_applications:
         if applications:
             st.info(
@@ -223,10 +185,6 @@ def render_dashboard(applications: list[dict], reminders: list[dict]) -> None:
 
     df = pd.DataFrame(visible_applications)
     events = get_application_events()
-
-    with st.expander("Quick edit visible application fields"):
-        display_df = with_display_sequence(df)
-        render_dashboard_recent_editor(visible_applications, display_df)
 
     status_counts = df["status"].value_counts().reset_index()
     status_counts.columns = ["status", "count"]
@@ -825,17 +783,18 @@ def _go_to_applications_workspace() -> None:
 
 
 def _go_to_email_assistant_workspace() -> None:
-    _request_workspace_navigation("Email Assistant")
+    st.session_state["more_section"] = "Email tools"
+    _request_workspace_navigation("More")
 
 
 def _request_workspace_navigation(workspace: str) -> None:
-    st.session_state[WORKSPACE_NAV_REQUEST_KEY] = workspace
+    st.session_state[WORKSPACE_NAV_REQUEST_KEY] = normalize_workspace(workspace)
 
 
 def _apply_workspace_navigation_request() -> None:
     requested_workspace = st.session_state.pop(WORKSPACE_NAV_REQUEST_KEY, None)
     if requested_workspace:
-        st.session_state["workspace_nav"] = requested_workspace
+        st.session_state["workspace_nav"] = normalize_workspace(requested_workspace)
 
 
 def render_pending_action_card(reminder: dict, applications: list[dict]) -> None:
@@ -884,12 +843,7 @@ def _apply_pending_action(application: dict, reminder: dict, action: PendingActi
 
 def _open_application_from_pending(application_id: int) -> None:
     _request_workspace_navigation("Applications")
-    st.session_state["application_edit_target_id"] = application_id
-    st.session_state["application_status_filter"] = STATUS_OPTIONS
-    st.session_state["application_company_search"] = ""
-    st.session_state["application_source_search"] = ""
-    st.session_state["application_date_range"] = ()
-    st.session_state["application_stale_only"] = False
+    st.session_state["applications_pending_detail_id"] = application_id
 
 
 def _application_by_id(applications: list[dict], application_id: int) -> dict | None:
