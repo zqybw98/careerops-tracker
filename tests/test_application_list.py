@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import date
 from typing import Any
 
+import src.application_list as application_list
 from src.application_list import (
     build_create_application_payload,
     build_edit_application_payload,
@@ -174,3 +176,76 @@ def test_edit_payload_preserves_identity_and_excludes_internal_id() -> None:
     assert payload["follow_up_date"] == ""
     assert payload["next_action"] == "Wait for review"
     assert "id" not in payload
+
+
+def test_company_suggestions_are_empty_without_applications() -> None:
+    assert application_list.build_company_suggestions([]) == []
+
+
+def test_company_suggestions_are_clean_deduplicated_and_stably_sorted() -> None:
+    applications = [
+        _application(company="  SAP  SE "),
+        _application(id=2, company="sap se"),
+        _application(id=3, company="Bosch"),
+        _application(id=4, company=""),
+        _application(id=5, company=None),
+    ]
+
+    assert application_list.build_company_suggestions(applications) == ["Bosch", "SAP SE"]
+
+
+def test_company_suggestions_keep_a_custom_current_value_and_blank_option() -> None:
+    applications = [_application(company="SAP")]
+
+    assert application_list.build_company_suggestions(
+        applications,
+        preferred=" New  Company GmbH ",
+        include_blank=True,
+    ) == ["", "New Company GmbH", "SAP"]
+
+
+def test_location_suggestions_merge_defaults_history_and_current_value() -> None:
+    applications = [
+        _application(location="  Berlin,  Germany "),
+        _application(id=2, location="berlin, germany"),
+        _application(id=3, location="Dresden, Germany"),
+        _application(id=4, location=""),
+        _application(id=5, location=None),
+    ]
+
+    options = application_list.build_location_suggestions(
+        applications,
+        preferred="Zurich, Switzerland",
+        include_blank=True,
+    )
+
+    assert options[0] == ""
+    assert "Berlin, Germany" in options
+    assert "Dresden, Germany" in options
+    assert "Remote, Germany" in options
+    assert "Zurich, Switzerland" in options
+    assert sum(option.casefold() == "berlin, germany" for option in options) == 1
+    assert options[1:] == sorted(options[1:], key=str.casefold)
+
+
+def test_suggestion_builders_do_not_modify_application_data() -> None:
+    applications = [_application(company="SAP", location="Walldorf, Germany")]
+    original = deepcopy(applications)
+
+    application_list.build_company_suggestions(applications, preferred="Bosch")
+    application_list.build_location_suggestions(applications, preferred="Berlin, Germany")
+
+    assert applications == original
+
+
+def test_custom_suggestion_values_enter_create_payload_unchanged() -> None:
+    payload = build_create_application_payload(
+        company="New Company GmbH",
+        role="Support Engineer",
+        location="Zurich, Switzerland",
+        status="Applied",
+        application_date=date(2026, 7, 18),
+    )
+
+    assert payload["company"] == "New Company GmbH"
+    assert payload["location"] == "Zurich, Switzerland"

@@ -8,9 +8,11 @@ import streamlit as st
 
 from src.application_list import (
     QuickFilter,
+    build_company_suggestions,
     build_create_application_payload,
     build_edit_application_payload,
     build_list_rows,
+    build_location_suggestions,
     count_quick_filters,
     filter_application_list,
     sort_application_list,
@@ -18,19 +20,6 @@ from src.application_list import (
 from src.database import create_application, update_application
 from src.duplicates import find_likely_duplicate_applications, format_duplicate_candidate
 from src.models import STATUS_OPTIONS
-
-DEFAULT_LOCATIONS = [
-    "Berlin, Germany",
-    "Potsdam, Germany",
-    "Munich, Germany",
-    "Hamburg, Germany",
-    "Stuttgart, Germany",
-    "Cologne, Germany",
-    "Frankfurt am Main, Germany",
-    "Remote, Germany",
-    "Hybrid, Germany",
-    "Germany",
-]
 
 QUICK_FILTERS: tuple[QuickFilter, ...] = ("all", "active", "interview", "waiting", "rejected")
 QUICK_FILTER_LABELS = {
@@ -75,7 +64,7 @@ def render_applications_page(applications: list[dict[str, Any]]) -> None:
 
 
 def _render_toolbar(applications: list[dict[str, Any]]) -> tuple[bool, dict[str, Any]]:
-    location_options = ["All locations", *_location_options(applications)]
+    location_options = ["All locations", *build_location_suggestions(applications)]
     search_col, location_col, status_col, add_col = st.columns([2.4, 1.35, 1.2, 0.85], vertical_alignment="bottom")
     search_query = search_col.text_input(
         "Search applications",
@@ -171,14 +160,14 @@ def _add_application_dialog(applications: list[dict[str, Any]]) -> None:
         company_col, role_col = st.columns(2)
         company = company_col.selectbox(
             "Company *",
-            _company_options(applications, include_blank=True),
+            build_company_suggestions(applications, include_blank=True),
             accept_new_options=True,
             key="applications_add_company",
         )
         role = role_col.text_input("Role *", key="applications_add_role")
 
         location_col, status_col, date_col = st.columns(3)
-        location_options = _location_options(applications, preferred="Germany", include_blank=True)
+        location_options = build_location_suggestions(applications, preferred="Germany", include_blank=True)
         location = location_col.selectbox(
             "Location",
             location_options,
@@ -258,7 +247,11 @@ def _application_details_dialog(application: dict[str, Any], applications: list[
             index=_option_index(STATUS_OPTIONS, str(application.get("status", ""))),
             key=f"applications_detail_status_{application_id}",
         )
-        locations = _location_options(applications, preferred=application.get("location", ""), include_blank=True)
+        locations = build_location_suggestions(
+            applications,
+            preferred=application.get("location", ""),
+            include_blank=True,
+        )
         location = location_col.selectbox(
             "Location",
             locations,
@@ -350,33 +343,6 @@ def _status_cell_style(value: object) -> str:
         "Applied": "color: #1d4ed8; background-color: #dbeafe; font-weight: 700;",
     }
     return styles.get(str(value), "")
-
-
-def _company_options(applications: list[dict[str, Any]], *, include_blank: bool = False) -> list[str]:
-    values = sorted(
-        {str(application.get("company", "") or "").strip() for application in applications} - {""},
-        key=str.casefold,
-    )
-    return ([""] if include_blank else []) + values
-
-
-def _location_options(
-    applications: list[dict[str, Any]],
-    preferred: object = "",
-    *,
-    include_blank: bool = False,
-) -> list[str]:
-    values = {
-        str(application.get("location", "") or "").strip()
-        for application in applications
-        if str(application.get("location", "") or "").strip()
-    }
-    values.update(DEFAULT_LOCATIONS)
-    preferred_text = str(preferred or "").strip()
-    if preferred_text:
-        values.add(preferred_text)
-    ordered = sorted(values, key=str.casefold)
-    return ([""] if include_blank else []) + ordered
 
 
 def _option_index(options: list[str], value: str) -> int:

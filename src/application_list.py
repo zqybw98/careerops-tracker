@@ -8,6 +8,20 @@ from src.models import APPLICATION_COLUMNS, apply_status_business_rules, normali
 
 QuickFilter = Literal["all", "active", "interview", "waiting", "rejected"]
 
+DEFAULT_LOCATION_SUGGESTIONS = (
+    "Berlin, Germany",
+    "Cologne, Germany",
+    "Frankfurt am Main, Germany",
+    "Germany",
+    "Hamburg, Germany",
+    "Hybrid, Germany",
+    "Munich, Germany",
+    "Potsdam, Germany",
+    "Remote, Germany",
+    "Stuttgart, Germany",
+    "Walldorf, Germany",
+)
+
 
 def filter_application_list(
     applications: Sequence[dict[str, Any]],
@@ -57,6 +71,30 @@ def count_quick_filters(applications: Sequence[dict[str, Any]]) -> dict[str, int
         "waiting": statuses.count("Waiting"),
         "rejected": statuses.count("Rejected"),
     }
+
+
+def build_company_suggestions(
+    applications: Sequence[dict[str, Any]],
+    preferred: object = "",
+    *,
+    include_blank: bool = False,
+) -> list[str]:
+    values = [preferred, *(application.get("company") for application in applications)]
+    return _build_suggestions(values, include_blank=include_blank)
+
+
+def build_location_suggestions(
+    applications: Sequence[dict[str, Any]],
+    preferred: object = "",
+    *,
+    include_blank: bool = False,
+) -> list[str]:
+    values = [
+        preferred,
+        *DEFAULT_LOCATION_SUGGESTIONS,
+        *(application.get("location") for application in applications),
+    ]
+    return _build_suggestions(values, include_blank=include_blank)
 
 
 def build_list_rows(
@@ -159,6 +197,23 @@ def _matches_quick_filter(status: str, quick_filter: QuickFilter) -> bool:
     if quick_filter == "waiting":
         return status == "Waiting"
     return status == "Rejected"
+
+
+def _build_suggestions(values: Sequence[object], *, include_blank: bool) -> list[str]:
+    unique_values: dict[str, str] = {}
+    for value in values:
+        suggestion = _suggestion_text(value)
+        if suggestion:
+            unique_values.setdefault(suggestion.casefold(), suggestion)
+
+    ordered = sorted(unique_values.values(), key=lambda item: (item.casefold(), item))
+    return ([""] if include_blank else []) + ordered
+
+
+def _suggestion_text(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    return " ".join(value.split())
 
 
 def _text(value: object) -> str:

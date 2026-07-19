@@ -21,6 +21,7 @@ from src.analytics import (
     build_time_to_first_response_by_source,
 )
 from src.application_filters import build_bulk_update_payload, filter_applications
+from src.application_list import build_company_suggestions, build_location_suggestions
 from src.application_note_parser import build_application_payload, parse_application_note
 from src.dashboard import build_daily_dashboard_sections, build_summary, filter_dashboard_applications
 from src.database import (
@@ -901,9 +902,23 @@ def render_applications(applications: list[dict]) -> None:
 
     with st.form("add_application_form", clear_on_submit=True):
         col_a, col_b, col_c = st.columns(3)
-        company = col_a.text_input("Company", value=str(prefill_fields.get("company", "")))
+        company_default = str(prefill_fields.get("company", "") or "")
+        company_options = build_company_suggestions(applications, company_default, include_blank=True)
+        company = col_a.selectbox(
+            "Company",
+            company_options,
+            index=_option_index(company_options, company_default),
+            accept_new_options=True,
+        )
         role = col_b.text_input("Role", value=str(prefill_fields.get("role", "")))
-        location = col_c.text_input("Location", value=str(prefill_fields.get("location", "Germany")))
+        location_default = str(prefill_fields.get("location", "Germany") or "Germany")
+        location_options = build_location_suggestions(applications, location_default, include_blank=True)
+        location = col_c.selectbox(
+            "Location",
+            location_options,
+            index=_option_index(location_options, location_default),
+            accept_new_options=True,
+        )
 
         col_d, col_e, col_f = st.columns(3)
         application_date = col_d.date_input(
@@ -1159,9 +1174,31 @@ def render_applications(applications: list[dict]) -> None:
     st.markdown("**Detailed edit**")
     with st.form("edit_application_form"):
         col_a, col_b, col_c = st.columns(3)
-        company = col_a.text_input("Company", value=selected["company"], key=f"{key_prefix}_company")
+        edit_company_options = build_company_suggestions(
+            applications,
+            selected.get("company", ""),
+            include_blank=True,
+        )
+        company = col_a.selectbox(
+            "Company",
+            edit_company_options,
+            index=_option_index(edit_company_options, selected.get("company", "")),
+            accept_new_options=True,
+            key=f"{key_prefix}_company",
+        )
         role = col_b.text_input("Role", value=selected["role"], key=f"{key_prefix}_role")
-        location = col_c.text_input("Location", value=selected.get("location", ""), key=f"{key_prefix}_location")
+        edit_location_options = build_location_suggestions(
+            applications,
+            selected.get("location", ""),
+            include_blank=True,
+        )
+        location = col_c.selectbox(
+            "Location",
+            edit_location_options,
+            index=_option_index(edit_location_options, selected.get("location", "")),
+            accept_new_options=True,
+            key=f"{key_prefix}_location",
+        )
 
         col_d, col_e, col_f = st.columns(3)
         application_date = col_d.date_input(
