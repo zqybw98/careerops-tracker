@@ -42,5 +42,8 @@ jobs:
       - name: Run type checks
         run: python -m mypy src
 
+      - name: Prepare pytest temporary directory
+        run: mkdir -p .tmp
+
       - name: Run tests with coverage
         run: python -m pytest --cov=src --cov-report=term-missing
