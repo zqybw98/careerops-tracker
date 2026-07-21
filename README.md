@@ -36,6 +36,26 @@ The repository is configured for Streamlit Community Cloud. The hosted deploymen
 7. Open `More > Email tools` and paste a sample recruiting email from `samples/sample_emails.txt`.
 8. Open `Analytics` to review pipeline and decision metrics.
 
+## Screenshots
+
+All screenshots use synthetic demonstration data.
+
+### Applications-first workspace
+
+![Applications-first workspace](docs/screenshots/applications.png)
+
+### Fast application intake
+
+![Add application dialog](docs/screenshots/add-application.png)
+
+### Application details
+
+![Application details dialog](docs/screenshots/application-details.png)
+
+### Analytics
+
+![CareerOps analytics](docs/screenshots/analytics.png)
+
 ## Core Workflow
 
 ### Applications-first workspace
@@ -284,7 +304,6 @@ The project is relevant to QA, automation, technical operations, system integrat
 
 ## Future Improvements
 
-- Refresh public screenshots with synthetic data for the Applications-first interface.
 - Add copy-to-clipboard actions for generated templates.
 - Add optional Gmail draft creation and two-way calendar integration.
 - Export a concise weekly operations report.
