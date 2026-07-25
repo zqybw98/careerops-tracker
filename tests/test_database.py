@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+import src.database as database
 from src.database import (
     MIGRATIONS_DIR,
     create_application,
@@ -27,7 +28,7 @@ def _company_research_indexes(connection: sqlite3.Connection) -> set[str]:
     return {row[1] for row in connection.execute("PRAGMA index_list(company_research_notes)").fetchall()}
 
 
-def test_create_and_update_application(tmp_path: Path) -> None:
+def test_public_create_and_update_still_commit_events(tmp_path: Path) -> None:
     db_path = tmp_path / "applications.db"
     init_db(db_path)
 
@@ -40,6 +41,7 @@ def test_create_and_update_application(tmp_path: Path) -> None:
             "status": "Applied",
         },
         db_path=db_path,
+        source="compatibility_test",
     )
 
     applications = get_applications(db_path)
@@ -48,7 +50,7 @@ def test_create_and_update_application(tmp_path: Path) -> None:
     assert applications[0]["company"] == "Example GmbH"
     events = get_application_events(application_id, db_path)
     assert events[0]["event_type"] == "application_created"
-    assert events[0]["source"] == "manual"
+    assert events[0]["source"] == "compatibility_test"
 
     update_application(
         application_id,
@@ -58,6 +60,7 @@ def test_create_and_update_application(tmp_path: Path) -> None:
             "next_action": "Prepare interview notes",
         },
         db_path=db_path,
+        source="compatibility_test",
     )
 
     updated = get_applications(db_path)[0]
@@ -66,6 +69,104 @@ def test_create_and_update_application(tmp_path: Path) -> None:
     update_events = get_application_events(application_id, db_path)
     assert any(event["event_type"] == "status_changed" for event in update_events)
     assert any(event["event_type"] == "next_action_changed" for event in update_events)
+    assert all(event["source"] == "compatibility_test" for event in update_events)
+
+
+def test_transaction_helpers_do_not_commit_caller_transaction(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    init_db(db_path)
+    existing_id = create_application(
+        {
+            "company": "Existing GmbH",
+            "role": "QA Engineer",
+            "application_date": "2026-07-25",
+            "status": "Applied",
+        },
+        db_path=db_path,
+        source="seed",
+    )
+
+    with database.get_connection(db_path) as connection:
+        connection.execute("BEGIN")
+        created_id = database._create_application_in_transaction(
+            connection,
+            {
+                "company": "Rolled Back GmbH",
+                "role": "Test Engineer",
+                "application_date": "2026-07-25",
+                "status": "Applied",
+            },
+            source="capture_test",
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM applications WHERE id = ?",
+                (created_id,),
+            ).fetchone()[0]
+            == 1
+        )
+        assert (
+            connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM application_events
+                WHERE application_id = ?
+                  AND source = 'capture_test'
+                """,
+                (created_id,),
+            ).fetchone()[0]
+            == 1
+        )
+        connection.rollback()
+
+    with sqlite3.connect(db_path) as connection:
+        assert (
+            connection.execute("SELECT COUNT(*) FROM applications WHERE company = 'Rolled Back GmbH'").fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute("SELECT COUNT(*) FROM application_events WHERE source = 'capture_test'").fetchone()[0]
+            == 0
+        )
+
+    existing = get_applications(db_path)[0]
+    with database.get_connection(db_path) as connection:
+        connection.execute("BEGIN")
+        database._update_application_in_transaction(
+            connection,
+            existing_id,
+            {
+                **existing,
+                "status": "Waiting",
+                "next_action": "Wait",
+            },
+            source="capture_test",
+        )
+        assert (
+            connection.execute(
+                "SELECT status FROM applications WHERE id = ?",
+                (existing_id,),
+            ).fetchone()[0]
+            == "Waiting"
+        )
+        assert (
+            connection.execute(
+                """
+                SELECT COUNT(*)
+                FROM application_events
+                WHERE application_id = ?
+                  AND source = 'capture_test'
+                """,
+                (existing_id,),
+            ).fetchone()[0]
+            >= 1
+        )
+        connection.rollback()
+
+    persisted = get_applications(db_path)[0]
+    persisted_events = get_application_events(existing_id, db_path)
+    assert persisted["status"] == "Applied"
+    assert not any(event["source"] == "capture_test" for event in persisted_events)
 
 
 def test_rejection_reason_is_tracked_in_activity_log(tmp_path: Path) -> None:
@@ -166,12 +267,63 @@ def test_init_db_records_versioned_migrations(tmp_path: Path) -> None:
     assert {
         "applications",
         "application_events",
+        "capture_requests",
         "company_research_notes",
         "email_feedback",
         "schema_version",
     } <= tables
     assert "rejection_reason" in application_columns
     assert versions == _expected_migrations()
+
+
+def test_init_db_creates_capture_requests_schema(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+
+    init_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        columns = {
+            row[1]: {
+                "type": row[2],
+                "not_null": row[3],
+                "primary_key": row[5],
+            }
+            for row in connection.execute("PRAGMA table_info(capture_requests)").fetchall()
+        }
+        version_count = connection.execute("SELECT COUNT(*) FROM schema_version WHERE version = 7").fetchone()[0]
+
+    assert set(columns) == {
+        "client_request_id",
+        "payload_sha256",
+        "application_id",
+        "result",
+        "created_at",
+    }
+    assert columns["client_request_id"]["type"] == "TEXT"
+    assert columns["client_request_id"]["primary_key"] == 1
+    assert all(columns[name]["not_null"] == 1 for name in columns if name != "client_request_id")
+    assert version_count == 1
+
+
+def test_init_db_applies_capture_migration_idempotently(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+
+    init_db(db_path)
+    init_db(db_path)
+
+    with sqlite3.connect(db_path) as connection:
+        table_count = connection.execute(
+            """
+            SELECT COUNT(*)
+            FROM sqlite_master
+            WHERE type = 'table'
+              AND name = 'capture_requests'
+            """
+        ).fetchone()[0]
+        version_count = connection.execute("SELECT COUNT(*) FROM schema_version WHERE version = 7").fetchone()[0]
+
+    assert table_count == 1
+    assert version_count == 1
 
 
 def test_init_db_creates_company_research_table_and_indexes(tmp_path: Path) -> None:

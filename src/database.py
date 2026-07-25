@@ -68,30 +68,43 @@ def create_application(
     db_path: Path | str = DEFAULT_DB_PATH,
     source: str = "manual",
 ) -> int:
+    with get_connection(db_path) as connection:
+        application_id = _create_application_in_transaction(
+            connection,
+            payload,
+            source,
+        )
+        connection.commit()
+        return application_id
+
+
+def _create_application_in_transaction(
+    connection: sqlite3.Connection,
+    payload: dict[str, Any],
+    source: str,
+) -> int:
     cleaned = _clean_payload(payload)
     now = _now()
     columns = APPLICATION_COLUMNS + ["created_at", "updated_at"]
     values = [cleaned.get(column) for column in APPLICATION_COLUMNS] + [now, now]
     placeholders = ", ".join(["?"] * len(columns))
 
-    with get_connection(db_path) as connection:
-        cursor = connection.execute(
-            f"INSERT INTO applications ({', '.join(columns)}) VALUES ({placeholders})",
-            values,
-        )
-        if cursor.lastrowid is None:
-            raise RuntimeError("Failed to create application record.")
-        application_id = cursor.lastrowid
-        _insert_event(
-            connection,
-            application_id=application_id,
-            event_type="application_created",
-            old_value="",
-            new_value=_summarize_application(cleaned),
-            source=source,
-        )
-        connection.commit()
-        return application_id
+    cursor = connection.execute(
+        f"INSERT INTO applications ({', '.join(columns)}) VALUES ({placeholders})",
+        values,
+    )
+    if cursor.lastrowid is None:
+        raise RuntimeError("Failed to create application record.")
+    application_id = cursor.lastrowid
+    _insert_event(
+        connection,
+        application_id=application_id,
+        event_type="application_created",
+        old_value="",
+        new_value=_summarize_application(cleaned),
+        source=source,
+    )
+    return application_id
 
 
 def get_applications(db_path: Path | str = DEFAULT_DB_PATH) -> list[dict[str, Any]]:
@@ -114,35 +127,49 @@ def update_application(
     db_path: Path | str = DEFAULT_DB_PATH,
     source: str = "manual",
 ) -> None:
+    with get_connection(db_path) as connection:
+        _update_application_in_transaction(
+            connection,
+            application_id,
+            payload,
+            source,
+        )
+        connection.commit()
+
+
+def _update_application_in_transaction(
+    connection: sqlite3.Connection,
+    application_id: int,
+    payload: dict[str, Any],
+    source: str,
+) -> None:
     cleaned = _clean_payload(payload)
     assignments = ", ".join([f"{column} = ?" for column in APPLICATION_COLUMNS])
     values = [cleaned.get(column) for column in APPLICATION_COLUMNS]
     values.extend([_now(), application_id])
 
-    with get_connection(db_path) as connection:
-        existing = _get_application_by_id(connection, application_id)
-        connection.execute(
-            f"""
-            UPDATE applications
-            SET {assignments}, updated_at = ?
-            WHERE id = ?
-            """,
-            values,
-        )
-        if existing is not None:
-            for column in APPLICATION_COLUMNS:
-                old_value = str(existing.get(column, "") or "").strip()
-                new_value = str(cleaned.get(column, "") or "").strip()
-                if old_value != new_value:
-                    _insert_event(
-                        connection,
-                        application_id=application_id,
-                        event_type=f"{column}_changed",
-                        old_value=old_value,
-                        new_value=new_value,
-                        source=source,
-                    )
-        connection.commit()
+    existing = _get_application_by_id(connection, application_id)
+    connection.execute(
+        f"""
+        UPDATE applications
+        SET {assignments}, updated_at = ?
+        WHERE id = ?
+        """,
+        values,
+    )
+    if existing is not None:
+        for column in APPLICATION_COLUMNS:
+            old_value = str(existing.get(column, "") or "").strip()
+            new_value = str(cleaned.get(column, "") or "").strip()
+            if old_value != new_value:
+                _insert_event(
+                    connection,
+                    application_id=application_id,
+                    event_type=f"{column}_changed",
+                    old_value=old_value,
+                    new_value=new_value,
+                    source=source,
+                )
 
 
 def delete_application(
@@ -588,6 +615,17 @@ def _migration_is_satisfied(connection: sqlite3.Connection, version: int) -> boo
                 connection,
                 "idx_company_research_checked_at",
             )
+        )
+    if version == 7:
+        required_columns = {
+            "client_request_id",
+            "payload_sha256",
+            "application_id",
+            "result",
+            "created_at",
+        }
+        return _table_exists(connection, "capture_requests") and all(
+            _column_exists(connection, "capture_requests", column_name) for column_name in required_columns
         )
     return False
 
