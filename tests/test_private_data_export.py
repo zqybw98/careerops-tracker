@@ -192,3 +192,46 @@ def test_export_sql_contains_only_approved_business_tables(tmp_path: Path) -> No
     assert "applications" in sql_dump
     assert "local_secrets" not in sql_dump
     assert "never-export-this" not in sql_dump
+
+
+def test_export_excludes_internal_capture_requests_data(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    destination = tmp_path / "private-data"
+    _seed_database(db_path)
+    synthetic_request_id = "6fbe432a-f4a7-4d93-94bd-9cd5885aa523"
+    synthetic_hash = "synthetic-payload-hash-do-not-export"
+    token_like_value = "synthetic-capture-token-do-not-export"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO capture_requests (
+                client_request_id,
+                payload_sha256,
+                application_id,
+                result,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                synthetic_request_id,
+                synthetic_hash,
+                1,
+                token_like_value,
+                "2026-07-25T10:00:00+00:00",
+            ),
+        )
+
+    result = export_private_data(db_path, destination)
+
+    relative_files = {path.relative_to(destination).as_posix() for path in result.files}
+    assert not any("capture_requests" in path for path in relative_files)
+    exported_text = "\n".join(path.read_text(encoding="utf-8") for path in result.files)
+    assert "client_request_id" not in exported_text
+    assert synthetic_request_id not in exported_text
+    assert synthetic_hash not in exported_text
+    assert token_like_value not in exported_text
+
+    manifest = json.loads((destination / "sync_manifest.json").read_text(encoding="utf-8"))
+    assert "capture_requests" not in manifest["tables"]
+    assert manifest["row_counts"]["applications"] == 1
