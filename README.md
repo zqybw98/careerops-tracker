@@ -95,6 +95,12 @@ Company Explorer can search prior companies and roles and store dated career-pag
 
 The optional private-data export includes approved company research fields when the table is present. Company Explorer records user-entered research; it does not perform automatic internet research.
 
+### Local Browser Capture Bridge
+
+`start.bat` enables an authenticated Bridge on `127.0.0.1:8765` for a separately installed companion extension. It supports review-first application previews, duplicate checks, and atomic confirmed saves into the same local SQLite database. Normal manual launches and the hosted demo keep the Bridge disabled.
+
+See [Local Browser Capture Bridge](docs/browser-capture.md) for pairing, API version `1`, privacy boundaries, synthetic testing, and troubleshooting.
+
 ## Other Features
 
 - Classify English, German, and Chinese recruiting emails as confirmation, recruiter reply, interview, assessment, rejection, follow-up, or other.
@@ -113,6 +119,7 @@ The optional private-data export includes approved company research fields when 
 - Gmail sync is optional, local-only, and uses read-only OAuth.
 - Local OAuth credentials and tokens are ignored by Git.
 - Private export tooling uses an approved field list rather than copying arbitrary database columns.
+- The optional Browser Capture Bridge binds to loopback only; its local pairing token is ignored by Git and excluded from exports.
 - Sample data is synthetic and suitable for the public demo.
 - Do not paste sensitive real application data into a public hosted demo.
 
@@ -123,6 +130,7 @@ The optional private-data export includes approved company research fields when 
 - Gmail sync is local-only and unavailable in the hosted demo.
 - The app is designed for an individual workflow, not a multi-user team.
 - Calendar integration is export-based via `.ics`, not two-way calendar synchronization.
+- Browser Capture requires a separately installed companion extension; this repository contains the local Bridge, not the Chrome package.
 
 ## Tech Stack
 
@@ -156,10 +164,13 @@ The optional private-data export includes approved company research fields when 
 |   |-- 003_add_email_feedback.sql
 |   |-- 004_add_lookup_indexes.sql
 |   |-- 005_simplify_daily_statuses.sql
-|   `-- 006_add_company_research_notes.sql
+|   |-- 006_add_company_research_notes.sql
+|   `-- 007_add_capture_requests.sql
 |-- src/
 |   |-- application_list.py
 |   |-- application_note_parser.py
+|   |-- capture_api.py
+|   |-- capture_service.py
 |   |-- database.py
 |   |-- private_data_export.py
 |   |-- email_classifier.py
@@ -171,6 +182,7 @@ The optional private-data export includes approved company research fields when 
 |   |   `-- job_post_workflow.py
 |   `-- ui/
 |       |-- applications_page.py
+|       |-- capture_pairing.py
 |       |-- email_assistant_page.py
 |       |-- more_page.py
 |       |-- sidebar.py
@@ -186,6 +198,7 @@ The optional private-data export includes approved company research fields when 
 |   `-- sample_emails.txt
 `-- docs/
     |-- architecture.md
+    |-- browser-capture.md
     |-- design_decisions.md
     `-- deployment.md
 ```
@@ -193,7 +206,7 @@ The optional private-data export includes approved company research fields when 
 ## Quick Start on Windows
 
 - First-time setup: double-click `setup.bat`.
-- Daily start: double-click `start.bat`.
+- Daily start: double-click `start.bat`. This also enables the loopback-only Browser Capture Bridge.
 - VS Code start: press `Ctrl+Shift+B` and run `Run CareerOps Tracker`.
 
 Manual fallback:
@@ -201,6 +214,8 @@ Manual fallback:
 ```powershell
 .\.venv\Scripts\python.exe -m streamlit run app.py
 ```
+
+The manual fallback intentionally leaves Browser Capture disabled.
 
 ## Manual Setup
 
@@ -224,7 +239,7 @@ Set `CAREEROPS_DB_PATH` before launch to use a separate database for demos, scre
 ## Data, Import, and Migrations
 
 - Application data, activity events, email feedback, and company research notes are stored in SQLite.
-- `schema_version` records applied migrations; migration 006 adds company research notes and indexes.
+- `schema_version` records applied migrations; migration 006 adds company research notes and migration 007 adds Capture request idempotency records.
 - CSV import previews created, updated, and unchanged rows before writing.
 - Re-importing the same company, role, and application date updates the existing record instead of creating an exact duplicate.
 - Data tools provide application CSV, activity-log CSV, SQLite backup, and calendar exports.

@@ -7,6 +7,7 @@ import json
 import os
 import re
 import secrets
+import socket
 import sqlite3
 import stat
 import tempfile
@@ -307,13 +308,13 @@ def _probe_capture_bridge_port() -> _BridgeProbeResult:
     except ConnectionRefusedError:
         return "available"
     except TimeoutError:
-        return "port_conflict"
+        return "available" if _capture_bridge_port_is_bindable() else "port_conflict"
     except http.client.HTTPException:
         return "port_conflict"
     except OSError as error:
         if getattr(error, "winerror", None) == 10061 or error.errno in {61, 111}:
             return "available"
-        return "port_conflict"
+        return "available" if _capture_bridge_port_is_bindable() else "port_conflict"
     finally:
         connection.close()
 
@@ -330,6 +331,16 @@ def _probe_capture_bridge_port() -> _BridgeProbeResult:
     }:
         return "external_bridge_detected"
     return "port_conflict"
+
+
+def _capture_bridge_port_is_bindable() -> bool:
+    # Some Windows setups time out when connecting to an unused loopback port.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
+        try:
+            candidate.bind((CAPTURE_BRIDGE_HOST, CAPTURE_BRIDGE_PORT))
+        except OSError:
+            return False
+    return True
 
 
 def _is_streamlit_cloud_environment() -> bool:

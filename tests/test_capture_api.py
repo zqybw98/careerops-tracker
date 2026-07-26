@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import pytest
 import src.capture_api as capture_api
+import src.capture_service as capture_service
 from src.capture_api import (
     CaptureBridgeStatus,
     build_capture_server,
@@ -29,7 +30,7 @@ from src.capture_service import (
     CaptureNotFoundError,
     CaptureValidationError,
 )
-from src.database import get_applications, init_db
+from src.database import get_application_events, get_applications, init_db
 
 EXTENSION_ID = "abcdefghijklmnopabcdefghijklmnop"
 EXTENSION_ORIGIN = f"chrome-extension://{EXTENSION_ID}"
@@ -242,6 +243,11 @@ def _error_code(body: object | None) -> str:
     code = error.get("code")
     assert isinstance(code, str)
     return code
+
+
+def _table_count(db_path: Path, table: str) -> int:
+    with sqlite3.connect(db_path) as connection:
+        return int(connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
 
 
 def test_capture_bridge_status_is_frozen() -> None:
@@ -979,6 +985,63 @@ def test_save_returns_created_result_and_idempotent_replay(tmp_path: Path) -> No
     assert len(get_applications(bridge.db_path)) == 1
 
 
+def test_streamlit_reads_see_only_committed_capture_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    application_inserted = threading.Event()
+    allow_commit = threading.Event()
+    original_create = capture_service._create_application_in_transaction
+
+    def blocking_create(
+        connection: sqlite3.Connection,
+        payload: dict[str, object],
+        source: str,
+    ) -> int:
+        application_id = original_create(connection, payload, source)
+        application_inserted.set()
+        assert allow_commit.wait(timeout=3)
+        return application_id
+
+    monkeypatch.setattr(
+        capture_service,
+        "_create_application_in_transaction",
+        blocking_create,
+    )
+
+    with _running_bridge(tmp_path) as bridge:
+        assert _pair(bridge)[0] == 200
+        request_results: list[tuple[int, dict[str, str], object | None]] = []
+        request_thread = threading.Thread(
+            target=lambda: request_results.append(
+                _request(
+                    bridge,
+                    "POST",
+                    "/api/v1/applications",
+                    body=_confirmed_payload(),
+                    token=bridge.token,
+                    timeout=8,
+                )
+            )
+        )
+        request_thread.start()
+        assert application_inserted.wait(timeout=3)
+        try:
+            assert [get_applications(bridge.db_path) for _ in range(3)] == [[], [], []]
+        finally:
+            allow_commit.set()
+        request_thread.join(timeout=8)
+
+    assert not request_thread.is_alive()
+    assert request_results[0][0] == 201
+    response_body = request_results[0][2]
+    assert isinstance(response_body, dict)
+    application_id = int(response_body["application_id"])
+    assert len(get_applications(bridge.db_path)) == 1
+    assert len(get_application_events(application_id, bridge.db_path)) == 1
+    assert _table_count(bridge.db_path, "capture_requests") == 1
+
+
 @pytest.mark.parametrize("api_version", [None, "", "2"])
 def test_unsupported_api_version_precedes_service_and_database_access(
     tmp_path: Path,
@@ -1469,6 +1532,46 @@ def test_real_locked_preview_database_maps_to_retryable_503(tmp_path: Path) -> N
     assert body["error"]["retryable"] is True
 
 
+def test_real_locked_save_returns_503_without_partial_rows(tmp_path: Path) -> None:
+    with _running_bridge(tmp_path) as bridge:
+        assert _pair(bridge)[0] == 200
+        request_results: list[tuple[int, dict[str, str], object | None]] = []
+        request_finished = threading.Event()
+
+        def save() -> None:
+            request_results.append(
+                _request(
+                    bridge,
+                    "POST",
+                    "/api/v1/applications",
+                    body=_confirmed_payload(),
+                    token=bridge.token,
+                    timeout=8,
+                )
+            )
+            request_finished.set()
+
+        with sqlite3.connect(bridge.db_path) as locking_connection:
+            locking_connection.execute("BEGIN IMMEDIATE")
+            request_thread = threading.Thread(target=save)
+            request_thread.start()
+            try:
+                assert request_finished.wait(timeout=7)
+            finally:
+                locking_connection.rollback()
+            request_thread.join(timeout=3)
+
+    assert not request_thread.is_alive()
+    status, _headers, body = request_results[0]
+    assert status == 503
+    assert _error_code(body) == "database_busy"
+    assert isinstance(body, dict)
+    assert body["error"]["retryable"] is True
+    assert get_applications(bridge.db_path) == []
+    assert _table_count(bridge.db_path, "application_events") == 0
+    assert _table_count(bridge.db_path, "capture_requests") == 0
+
+
 def test_sqlite_error_message_does_not_control_busy_mapping(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1820,6 +1923,57 @@ def test_malformed_http_port_owner_returns_conflict(
     )
 
     assert capture_api._probe_capture_bridge_port() == "port_conflict"
+
+
+def test_timed_out_probe_treats_bindable_port_as_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TimedOutConnection:
+        def request(self, _method: str, _path: str) -> None:
+            raise TimeoutError
+
+        def close(self) -> None:
+            return
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as port_selector:
+        port_selector.bind(("127.0.0.1", 0))
+        available_port = int(port_selector.getsockname()[1])
+
+    monkeypatch.setattr(capture_api, "CAPTURE_BRIDGE_PORT", available_port)
+    monkeypatch.setattr(
+        capture_api.http.client,
+        "HTTPConnection",
+        lambda *_args, **_kwargs: TimedOutConnection(),
+    )
+
+    assert capture_api._probe_capture_bridge_port() == "available"
+
+
+def test_timed_out_probe_keeps_occupied_port_as_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TimedOutConnection:
+        def request(self, _method: str, _path: str) -> None:
+            raise TimeoutError
+
+        def close(self) -> None:
+            return
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as occupied_socket:
+        occupied_socket.bind(("127.0.0.1", 0))
+        occupied_socket.listen()
+        monkeypatch.setattr(
+            capture_api,
+            "CAPTURE_BRIDGE_PORT",
+            int(occupied_socket.getsockname()[1]),
+        )
+        monkeypatch.setattr(
+            capture_api.http.client,
+            "HTTPConnection",
+            lambda *_args, **_kwargs: TimedOutConnection(),
+        )
+
+        assert capture_api._probe_capture_bridge_port() == "port_conflict"
 
 
 def test_actual_external_bridge_is_detected_without_creating_local_pairing_state(

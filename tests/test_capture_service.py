@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -744,6 +745,85 @@ def test_new_request_writes_one_application_event_and_capture_request(tmp_path: 
     assert len(get_applications(db_path)) == 1
     assert len(get_application_events(result["application_id"], db_path)) == 1
     assert _table_count(db_path, "capture_requests") == 1
+
+
+def test_two_distinct_simultaneous_captures_commit_without_corruption(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    init_db(db_path)
+    start_barrier = threading.Barrier(3)
+    results: list[dict[str, object]] = []
+    errors: list[Exception] = []
+    payloads = [
+        _confirmed_payload(
+            company="Alpha Systems GmbH",
+            role="QA Engineer",
+            source_link="https://alpha.example/jobs/qa",
+        ),
+        _confirmed_payload(
+            company="Beta Mobility AG",
+            role="Technical Support Specialist",
+            source_link="https://beta.example/jobs/support",
+        ),
+    ]
+
+    def save(payload: dict[str, object]) -> None:
+        try:
+            start_barrier.wait(timeout=3)
+            results.append(save_capture(payload, db_path=db_path))
+        except Exception as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=save, args=(payload,)) for payload in payloads]
+    for thread in threads:
+        thread.start()
+    start_barrier.wait(timeout=3)
+    for thread in threads:
+        thread.join(timeout=8)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
+    assert len(results) == 2
+    assert {result["result"] for result in results} == {"created"}
+    assert len(get_applications(db_path)) == 2
+    assert _table_count(db_path, "application_events") == 2
+    assert _table_count(db_path, "capture_requests") == 2
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+
+def test_simultaneous_idempotent_retries_create_one_complete_record(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    init_db(db_path)
+    start_barrier = threading.Barrier(3)
+    payload = _confirmed_payload()
+    results: list[dict[str, object]] = []
+    errors: list[Exception] = []
+
+    def save() -> None:
+        try:
+            start_barrier.wait(timeout=3)
+            results.append(save_capture(payload, db_path=db_path))
+        except Exception as error:
+            errors.append(error)
+
+    threads = [threading.Thread(target=save) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    start_barrier.wait(timeout=3)
+    for thread in threads:
+        thread.join(timeout=8)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert errors == []
+    assert len(results) == 2
+    assert {result["replayed"] for result in results} == {False, True}
+    assert len({result["application_id"] for result in results}) == 1
+    application_id = int(results[0]["application_id"])
+    assert len(get_applications(db_path)) == 1
+    assert len(get_application_events(application_id, db_path)) == 1
+    assert _table_count(db_path, "capture_requests") == 1
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
 
 def test_application_helper_failure_rolls_back_everything(
