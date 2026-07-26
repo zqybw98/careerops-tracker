@@ -360,18 +360,22 @@ def test_failed_posix_initial_creation_leaves_no_pairing_file(
     assert not list(pairing_path.parent.glob(f".{pairing_path.name}.*.tmp"))
 
 
-def test_failed_posix_server_start_leaves_no_pairing_file(
+def test_pairing_failure_closes_already_bound_server(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     pairing_path = tmp_path / "capture_pairing.json"
+    constructed_servers: list[capture_api._CaptureHTTPServer] = []
+    server_class = capture_api._CaptureHTTPServer
+
+    class TrackingServer(server_class):
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            super().__init__(*args, **kwargs)
+            constructed_servers.append(self)
+
     monkeypatch.setattr(capture_api, "_restrict_pairing_file_permissions", lambda _path: False)
     monkeypatch.setattr(capture_api, "_is_windows_platform", lambda: False)
-
-    def fail_if_server_is_constructed(*_args: object, **_kwargs: object) -> None:
-        raise AssertionError("Server construction must not follow insecure pairing state.")
-
-    monkeypatch.setattr(capture_api, "_CaptureHTTPServer", fail_if_server_is_constructed)
+    monkeypatch.setattr(capture_api, "_CaptureHTTPServer", TrackingServer)
 
     with pytest.raises(capture_api.PairingStateError, match="secure local pairing state"):
         build_capture_server(
@@ -381,6 +385,8 @@ def test_failed_posix_server_start_leaves_no_pairing_file(
             pairing_path=pairing_path,
         )
 
+    assert len(constructed_servers) == 1
+    assert constructed_servers[0].socket.fileno() == -1
     assert not pairing_path.exists()
     assert not list(pairing_path.parent.glob(f".{pairing_path.name}.*.tmp"))
 
@@ -511,6 +517,48 @@ def test_build_server_rejects_non_loopback_host(tmp_path: Path) -> None:
             db_path=tmp_path / "applications.db",
             pairing_path=tmp_path / "capture_pairing.json",
         )
+
+
+def test_occupied_port_does_not_create_new_pairing_state(tmp_path: Path) -> None:
+    pairing_path = tmp_path / "capture_pairing.json"
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as occupied_socket:
+        occupied_socket.bind(("127.0.0.1", 0))
+        occupied_socket.listen()
+        occupied_port = int(occupied_socket.getsockname()[1])
+
+        with pytest.raises(OSError):
+            build_capture_server(
+                host="127.0.0.1",
+                port=occupied_port,
+                db_path=tmp_path / "applications.db",
+                pairing_path=pairing_path,
+            )
+
+    assert not pairing_path.exists()
+    assert not list(pairing_path.parent.glob(f".{pairing_path.name}.*.tmp"))
+
+
+def test_bind_failure_preserves_preexisting_pairing_state(tmp_path: Path) -> None:
+    pairing_path = tmp_path / "capture_pairing.json"
+    existing_token = get_or_create_pairing_token(pairing_path)
+    original_pairing_state = pairing_path.read_bytes()
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as occupied_socket:
+        occupied_socket.bind(("127.0.0.1", 0))
+        occupied_socket.listen()
+        occupied_port = int(occupied_socket.getsockname()[1])
+
+        with pytest.raises(OSError):
+            build_capture_server(
+                host="127.0.0.1",
+                port=occupied_port,
+                db_path=tmp_path / "applications.db",
+                pairing_path=pairing_path,
+            )
+
+    assert pairing_path.read_bytes() == original_pairing_state
+    assert get_or_create_pairing_token(pairing_path) == existing_token
 
 
 def test_health_returns_only_public_identity_and_no_store(tmp_path: Path) -> None:
@@ -1555,3 +1603,297 @@ def test_failed_posix_pair_confirmation_does_not_bind_origin(
     assert bridge.token not in serialized_body
     assert str(bridge.pairing_path) not in serialized_body
     assert temporary_files == []
+
+
+@pytest.fixture
+def reset_capture_bridge_lifecycle() -> Iterator[None]:
+    capture_api._reset_capture_bridge_for_tests()
+    yield
+    capture_api._reset_capture_bridge_for_tests()
+
+
+class _LifecycleServer:
+    def __init__(self, pairing_path: Path) -> None:
+        self.pairing_path = pairing_path
+        self.server_address = ("127.0.0.1", 8765)
+        self.started = threading.Event()
+        self.stopped = threading.Event()
+        self.closed = False
+
+    def serve_forever(self) -> None:
+        self.started.set()
+        self.stopped.wait(timeout=5)
+
+    def shutdown(self) -> None:
+        self.stopped.set()
+
+    def server_close(self) -> None:
+        self.closed = True
+
+
+def _configure_enabled_lifecycle(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    probe_result: str = "available",
+) -> list[_LifecycleServer]:
+    servers: list[_LifecycleServer] = []
+    monkeypatch.setenv("CAREEROPS_CAPTURE_ENABLED", "1")
+    monkeypatch.setattr(capture_api, "_is_streamlit_cloud_environment", lambda: False)
+    monkeypatch.setattr(capture_api, "_probe_capture_bridge_port", lambda: probe_result)
+    monkeypatch.setattr(capture_api, "DEFAULT_DB_PATH", tmp_path / "applications.db")
+    monkeypatch.setattr(capture_api, "DEFAULT_PAIRING_PATH", tmp_path / "capture_pairing.json")
+
+    def build_server(**_kwargs: object) -> _LifecycleServer:
+        server = _LifecycleServer(tmp_path / "capture_pairing.json")
+        servers.append(server)
+        return server
+
+    monkeypatch.setattr(capture_api, "build_capture_server", build_server)
+    return servers
+
+
+def test_capture_bridge_is_disabled_without_explicit_feature_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    reset_capture_bridge_lifecycle: None,
+) -> None:
+    del reset_capture_bridge_lifecycle
+    monkeypatch.delenv("CAREEROPS_CAPTURE_ENABLED", raising=False)
+    monkeypatch.setattr(capture_api, "_is_streamlit_cloud_environment", lambda: False)
+
+    def fail_build(**_kwargs: object) -> None:
+        raise AssertionError("Disabled startup must not build a server.")
+
+    monkeypatch.setattr(capture_api, "build_capture_server", fail_build)
+
+    status = capture_api.ensure_capture_bridge_started()
+
+    assert status.state == "disabled"
+    assert capture_api._BRIDGE_SERVER is None
+    assert capture_api._BRIDGE_THREAD is None
+
+
+def test_capture_bridge_import_does_not_start_server() -> None:
+    assert capture_api._BRIDGE_SERVER is None
+    assert capture_api._BRIDGE_THREAD is None
+
+
+def test_repeated_startup_reuses_one_process_owned_bridge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reset_capture_bridge_lifecycle: None,
+) -> None:
+    del reset_capture_bridge_lifecycle
+    servers = _configure_enabled_lifecycle(monkeypatch, tmp_path)
+
+    first_status = capture_api.ensure_capture_bridge_started()
+    second_status = capture_api.ensure_capture_bridge_started()
+
+    assert first_status is second_status
+    assert first_status.state == "running"
+    assert len(servers) == 1
+    assert servers[0].started.wait(timeout=1)
+    assert capture_api._BRIDGE_SERVER is servers[0]
+
+
+def test_simultaneous_startup_calls_create_at_most_one_bridge_thread(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reset_capture_bridge_lifecycle: None,
+) -> None:
+    del reset_capture_bridge_lifecycle
+    servers = _configure_enabled_lifecycle(monkeypatch, tmp_path)
+    barrier = threading.Barrier(6)
+    statuses: list[CaptureBridgeStatus] = []
+
+    def start_bridge() -> None:
+        barrier.wait(timeout=2)
+        statuses.append(capture_api.ensure_capture_bridge_started())
+
+    threads = [threading.Thread(target=start_bridge) for _ in range(6)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=2)
+
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(servers) == 1
+    assert len(statuses) == 6
+    assert all(status is statuses[0] for status in statuses)
+
+
+def test_external_bridge_is_detected_without_adoption_or_local_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reset_capture_bridge_lifecycle: None,
+) -> None:
+    del reset_capture_bridge_lifecycle
+    servers = _configure_enabled_lifecycle(
+        monkeypatch,
+        tmp_path,
+        probe_result="external_bridge_detected",
+    )
+
+    status = capture_api.ensure_capture_bridge_started()
+
+    assert status.state == "external_bridge_detected"
+    assert servers == []
+    assert capture_api._BRIDGE_SERVER is None
+    assert capture_api._BRIDGE_THREAD is None
+    assert capture_api._BRIDGE_STATUS is None
+    assert not (tmp_path / "capture_pairing.json").exists()
+    with pytest.raises(RuntimeError, match="process-owned"):
+        capture_api.get_owned_capture_pairing_token()
+
+
+def test_unrelated_port_owner_returns_conflict_without_starting_bridge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reset_capture_bridge_lifecycle: None,
+) -> None:
+    del reset_capture_bridge_lifecycle
+    servers = _configure_enabled_lifecycle(
+        monkeypatch,
+        tmp_path,
+        probe_result="port_conflict",
+    )
+
+    status = capture_api.ensure_capture_bridge_started()
+
+    assert status.state == "port_conflict"
+    assert servers == []
+    assert capture_api._BRIDGE_SERVER is None
+    assert capture_api._BRIDGE_STATUS is None
+
+
+def test_bind_race_status_does_not_expose_or_create_local_token(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reset_capture_bridge_lifecycle: None,
+) -> None:
+    del reset_capture_bridge_lifecycle
+    pairing_path = tmp_path / "capture_pairing.json"
+    probe_results = iter(["available", "port_conflict"])
+    monkeypatch.setenv("CAREEROPS_CAPTURE_ENABLED", "1")
+    monkeypatch.setattr(capture_api, "_is_streamlit_cloud_environment", lambda: False)
+    monkeypatch.setattr(capture_api, "_probe_capture_bridge_port", lambda: next(probe_results))
+    monkeypatch.setattr(capture_api, "DEFAULT_PAIRING_PATH", pairing_path)
+    monkeypatch.setattr(capture_api, "DEFAULT_DB_PATH", tmp_path / "applications.db")
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as occupied_socket:
+        occupied_socket.bind(("127.0.0.1", 0))
+        occupied_socket.listen()
+        monkeypatch.setattr(
+            capture_api,
+            "CAPTURE_BRIDGE_PORT",
+            int(occupied_socket.getsockname()[1]),
+        )
+
+        status = capture_api.ensure_capture_bridge_started()
+
+    assert status.state == "port_conflict"
+    assert capture_api._BRIDGE_SERVER is None
+    assert capture_api._BRIDGE_THREAD is None
+    assert capture_api._BRIDGE_STATUS is None
+    assert not pairing_path.exists()
+    with pytest.raises(RuntimeError, match="process-owned"):
+        capture_api.get_owned_capture_pairing_token()
+
+
+def test_malformed_http_port_owner_returns_conflict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MalformedConnection:
+        def request(self, _method: str, _path: str) -> None:
+            return
+
+        def getresponse(self) -> None:
+            raise http.client.BadStatusLine("synthetic malformed response")
+
+        def close(self) -> None:
+            return
+
+    monkeypatch.setattr(
+        capture_api.http.client,
+        "HTTPConnection",
+        lambda *_args, **_kwargs: MalformedConnection(),
+    )
+
+    assert capture_api._probe_capture_bridge_port() == "port_conflict"
+
+
+def test_actual_external_bridge_is_detected_without_creating_local_pairing_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reset_capture_bridge_lifecycle: None,
+) -> None:
+    del reset_capture_bridge_lifecycle
+    local_pairing_path = tmp_path / "current_process_pairing.json"
+    monkeypatch.setenv("CAREEROPS_CAPTURE_ENABLED", "1")
+    monkeypatch.setattr(capture_api, "_is_streamlit_cloud_environment", lambda: False)
+    monkeypatch.setattr(capture_api, "DEFAULT_PAIRING_PATH", local_pairing_path)
+    monkeypatch.setattr(capture_api, "DEFAULT_DB_PATH", tmp_path / "current_process.db")
+
+    with _running_bridge(tmp_path / "external") as external_bridge:
+        monkeypatch.setattr(capture_api, "CAPTURE_BRIDGE_PORT", external_bridge.port)
+
+        status = capture_api.ensure_capture_bridge_started()
+
+    assert status.state == "external_bridge_detected"
+    assert capture_api._BRIDGE_SERVER is None
+    assert capture_api._BRIDGE_THREAD is None
+    assert capture_api._BRIDGE_STATUS is None
+    assert not local_pairing_path.exists()
+
+
+def test_unexpected_startup_error_keeps_streamlit_usable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reset_capture_bridge_lifecycle: None,
+) -> None:
+    del reset_capture_bridge_lifecycle
+    monkeypatch.setenv("CAREEROPS_CAPTURE_ENABLED", "1")
+    monkeypatch.setattr(capture_api, "_is_streamlit_cloud_environment", lambda: False)
+    monkeypatch.setattr(capture_api, "_probe_capture_bridge_port", lambda: "available")
+    monkeypatch.setattr(capture_api, "DEFAULT_PAIRING_PATH", tmp_path / "capture_pairing.json")
+
+    def fail_build(**_kwargs: object) -> None:
+        raise RuntimeError("synthetic startup failure")
+
+    monkeypatch.setattr(capture_api, "build_capture_server", fail_build)
+
+    status = capture_api.ensure_capture_bridge_started()
+
+    assert status.state == "startup_error"
+    assert "synthetic" not in status.message
+    assert capture_api._BRIDGE_SERVER is None
+    assert capture_api._BRIDGE_THREAD is None
+
+
+def test_windows_launcher_binds_streamlit_ui_to_loopback_and_fixed_port() -> None:
+    launcher = (Path(__file__).parents[1] / "start.bat").read_text(encoding="utf-8")
+
+    assert 'set "CAREEROPS_CAPTURE_ENABLED=1"' in launcher
+    assert "--server.address=127.0.0.1" in launcher
+    assert "--server.port=8501" in launcher
+
+
+def test_streamlit_cloud_environment_remains_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reset_capture_bridge_lifecycle: None,
+) -> None:
+    del reset_capture_bridge_lifecycle
+    monkeypatch.setenv("CAREEROPS_CAPTURE_ENABLED", "1")
+    monkeypatch.setattr(capture_api, "_is_streamlit_cloud_environment", lambda: True)
+
+    def fail_build(**_kwargs: object) -> None:
+        raise AssertionError("Hosted startup must not build a server.")
+
+    monkeypatch.setattr(capture_api, "build_capture_server", fail_build)
+
+    status = capture_api.ensure_capture_bridge_started()
+
+    assert status.state == "hosted_disabled"
+    assert capture_api._BRIDGE_SERVER is None
+    assert not (tmp_path / "capture_pairing.json").exists()

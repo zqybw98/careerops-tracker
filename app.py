@@ -23,6 +23,7 @@ from src.analytics import (
 from src.application_filters import build_bulk_update_payload, filter_applications
 from src.application_list import build_company_suggestions, build_location_suggestions
 from src.application_note_parser import build_application_payload, parse_application_note
+from src.capture_api import ensure_capture_bridge_started
 from src.dashboard import build_daily_dashboard_sections, build_summary, filter_dashboard_applications
 from src.database import (
     create_application,
@@ -44,6 +45,7 @@ from src.services.email_workflow import (
     build_email_workflow_for_application,
     classify_email_for_workflow,
 )
+from src.ui.application_deep_link import consume_application_deep_link
 from src.ui.applications_page import render_applications_page
 from src.ui.components import render_app_header, with_display_sequence
 from src.ui.more_page import render_more_page
@@ -131,6 +133,8 @@ WORKSPACE_NAV_REQUEST_KEY = "_workspace_nav_request"
 
 
 def main() -> None:
+    ensure_capture_bridge_started()
+    consume_application_deep_link()
     _apply_workspace_navigation_request()
     applications = get_applications()
     reminders = generate_reminders(applications)

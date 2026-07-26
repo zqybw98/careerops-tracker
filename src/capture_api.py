@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import http.client
 import json
 import os
 import re
@@ -27,10 +28,14 @@ from src.capture_service import (
     preview_capture,
     save_capture,
 )
+from src.database import DEFAULT_DB_PATH
 
 API_VERSION = "1"
 SERVICE_NAME = "careerops-capture-bridge"
 MAX_REQUEST_BYTES = 256 * 1024
+CAPTURE_BRIDGE_HOST = "127.0.0.1"
+CAPTURE_BRIDGE_PORT = 8765
+DEFAULT_PAIRING_PATH = Path(os.getenv("CAREEROPS_CAPTURE_PAIRING_PATH", "data/capture_pairing.json"))
 
 HEALTH_PATH = "/api/v1/health"
 PAIR_PATH = "/api/v1/pair/confirm"
@@ -45,10 +50,15 @@ _ALLOWED_CORS_HEADER_NAMES = frozenset({"authorization", "content-type", "x-care
 _EXTENSION_ORIGIN_PATTERN = re.compile(r"chrome-extension://[a-p]{32}")
 _PAIRING_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9_-]+")
 _PAIRING_LOCK = threading.Lock()
+_BRIDGE_LOCK = threading.Lock()
+_BRIDGE_SERVER: ThreadingHTTPServer | None = None
+_BRIDGE_THREAD: threading.Thread | None = None
+_BRIDGE_STATUS: CaptureBridgeStatus | None = None
 _ALLOWED_CONFLICT_CODES = frozenset({"duplicate_conflict", "idempotency_conflict"})
 _ALLOWED_NOT_FOUND_CODES = frozenset({"existing_application_not_found"})
 
 _AuthorizationDecision = Literal["authorized", "unauthorized", "forbidden"]
+_BridgeProbeResult = Literal["available", "external_bridge_detected", "port_conflict"]
 
 
 @dataclass(frozen=True)
@@ -128,13 +138,221 @@ def build_capture_server(
         raise ValueError("Capture Bridge port must be between 0 and 65535.")
 
     normalized_pairing_path = Path(pairing_path)
-    get_or_create_pairing_token(normalized_pairing_path)
-    return _CaptureHTTPServer(
+    server = _CaptureHTTPServer(
         (host, port),
         _CaptureRequestHandler,
         db_path=Path(db_path),
         pairing_path=normalized_pairing_path,
     )
+    try:
+        get_or_create_pairing_token(normalized_pairing_path)
+    except Exception:
+        with suppress(OSError):
+            server.server_close()
+        raise
+    return server
+
+
+def ensure_capture_bridge_started() -> CaptureBridgeStatus:
+    if _is_streamlit_cloud_environment():
+        return CaptureBridgeStatus(
+            state="hosted_disabled",
+            message="Browser Capture is unavailable in the hosted demo.",
+            port=CAPTURE_BRIDGE_PORT,
+        )
+    if os.getenv("CAREEROPS_CAPTURE_ENABLED", "").strip() != "1":
+        return CaptureBridgeStatus(
+            state="disabled",
+            message="Browser Capture is disabled. Start CareerOps with start.bat to enable it.",
+            port=CAPTURE_BRIDGE_PORT,
+        )
+
+    global _BRIDGE_SERVER, _BRIDGE_STATUS, _BRIDGE_THREAD
+    with _BRIDGE_LOCK:
+        if _owned_bridge_is_live():
+            if _BRIDGE_STATUS is None:
+                raise RuntimeError("Process-owned Capture Bridge has no lifecycle status.")
+            return _BRIDGE_STATUS
+        _clear_dead_bridge_state()
+
+        probe_result = _probe_capture_bridge_port()
+        if probe_result == "external_bridge_detected":
+            return CaptureBridgeStatus(
+                state=probe_result,
+                message=(
+                    "Another CareerOps process owns the Capture Bridge. Close it or use that process's pairing UI."
+                ),
+                port=CAPTURE_BRIDGE_PORT,
+            )
+        if probe_result == "port_conflict":
+            return CaptureBridgeStatus(
+                state=probe_result,
+                message="Port 8765 is used by another application. Close it before enabling Browser Capture.",
+                port=CAPTURE_BRIDGE_PORT,
+            )
+
+        server: ThreadingHTTPServer | None = None
+        try:
+            with warnings.catch_warnings(record=True) as caught_warnings:
+                warnings.simplefilter("always", RuntimeWarning)
+                server = build_capture_server(
+                    host=CAPTURE_BRIDGE_HOST,
+                    port=CAPTURE_BRIDGE_PORT,
+                    db_path=DEFAULT_DB_PATH,
+                    pairing_path=DEFAULT_PAIRING_PATH,
+                )
+            thread = threading.Thread(
+                target=server.serve_forever,
+                daemon=True,
+                name="careerops-capture-bridge",
+            )
+            thread.start()
+        except PairingStateError:
+            return CaptureBridgeStatus(
+                state="startup_error",
+                message="Capture Bridge could not secure its local pairing state.",
+                port=CAPTURE_BRIDGE_PORT,
+            )
+        except OSError:
+            race_probe_result = _probe_capture_bridge_port()
+            if race_probe_result == "external_bridge_detected":
+                return CaptureBridgeStatus(
+                    state=race_probe_result,
+                    message=(
+                        "Another CareerOps process owns the Capture Bridge. Close it or use that process's pairing UI."
+                    ),
+                    port=CAPTURE_BRIDGE_PORT,
+                )
+            return CaptureBridgeStatus(
+                state="port_conflict",
+                message="Port 8765 is unavailable. Close the application using it and try again.",
+                port=CAPTURE_BRIDGE_PORT,
+            )
+        except RuntimeError:
+            if server is not None:
+                with suppress(OSError):
+                    server.server_close()
+            return CaptureBridgeStatus(
+                state="startup_error",
+                message="Capture Bridge could not start.",
+                port=CAPTURE_BRIDGE_PORT,
+            )
+
+        has_permission_warning = any(issubclass(item.category, RuntimeWarning) for item in caught_warnings)
+        state = "running_with_warning" if has_permission_warning else "running"
+        message = (
+            "Capture Bridge is running, but Windows permissions could not be confirmed."
+            if has_permission_warning
+            else "Capture Bridge is running."
+        )
+        _BRIDGE_SERVER = server
+        _BRIDGE_THREAD = thread
+        _BRIDGE_STATUS = CaptureBridgeStatus(
+            state=state,
+            message=message,
+            port=CAPTURE_BRIDGE_PORT,
+        )
+        return _BRIDGE_STATUS
+
+
+def is_local_capture_run() -> bool:
+    return not _is_streamlit_cloud_environment()
+
+
+def get_owned_capture_pairing_token() -> str:
+    with _BRIDGE_LOCK:
+        pairing_path = _owned_bridge_pairing_path()
+        return get_or_create_pairing_token(pairing_path)
+
+
+def rotate_owned_capture_pairing_token() -> str:
+    with _BRIDGE_LOCK:
+        pairing_path = _owned_bridge_pairing_path()
+        return rotate_pairing_token(pairing_path)
+
+
+def _owned_bridge_pairing_path() -> Path:
+    if not _owned_bridge_is_live() or _BRIDGE_SERVER is None:
+        raise RuntimeError("Pairing controls require a process-owned Capture Bridge.")
+    pairing_path = getattr(_BRIDGE_SERVER, "pairing_path", None)
+    if not isinstance(pairing_path, Path):
+        raise RuntimeError("Process-owned Capture Bridge has no pairing state.")
+    return pairing_path
+
+
+def _owned_bridge_is_live() -> bool:
+    return _BRIDGE_SERVER is not None and _BRIDGE_THREAD is not None and _BRIDGE_THREAD.is_alive()
+
+
+def _clear_dead_bridge_state() -> None:
+    global _BRIDGE_SERVER, _BRIDGE_STATUS, _BRIDGE_THREAD
+    if _BRIDGE_SERVER is not None:
+        with suppress(OSError):
+            _BRIDGE_SERVER.server_close()
+    _BRIDGE_SERVER = None
+    _BRIDGE_THREAD = None
+    _BRIDGE_STATUS = None
+
+
+def _probe_capture_bridge_port() -> _BridgeProbeResult:
+    connection = http.client.HTTPConnection(
+        CAPTURE_BRIDGE_HOST,
+        CAPTURE_BRIDGE_PORT,
+        timeout=0.5,
+    )
+    try:
+        connection.request("GET", HEALTH_PATH)
+        response = connection.getresponse()
+        body = response.read(4097)
+    except ConnectionRefusedError:
+        return "available"
+    except TimeoutError:
+        return "port_conflict"
+    except http.client.HTTPException:
+        return "port_conflict"
+    except OSError as error:
+        if getattr(error, "winerror", None) == 10061 or error.errno in {61, 111}:
+            return "available"
+        return "port_conflict"
+    finally:
+        connection.close()
+
+    if response.status != 200 or len(body) > 4096:
+        return "port_conflict"
+    try:
+        payload = json.loads(body.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        return "port_conflict"
+    if payload == {
+        "service": SERVICE_NAME,
+        "api_version": API_VERSION,
+        "status": "ok",
+    }:
+        return "external_bridge_detected"
+    return "port_conflict"
+
+
+def _is_streamlit_cloud_environment() -> bool:
+    sharing_mode = os.getenv("STREAMLIT_SHARING_MODE", "").strip().lower()
+    cloud_flag = os.getenv("STREAMLIT_CLOUD", "").strip().lower()
+    return sharing_mode in {"cloud", "streamlit"} or cloud_flag in {"1", "true", "yes"}
+
+
+def _reset_capture_bridge_for_tests() -> None:
+    global _BRIDGE_SERVER, _BRIDGE_STATUS, _BRIDGE_THREAD
+    with _BRIDGE_LOCK:
+        server = _BRIDGE_SERVER
+        thread = _BRIDGE_THREAD
+        _BRIDGE_SERVER = None
+        _BRIDGE_THREAD = None
+        _BRIDGE_STATUS = None
+    if server is not None:
+        with suppress(OSError):
+            server.shutdown()
+        with suppress(OSError):
+            server.server_close()
+    if thread is not None:
+        thread.join(timeout=3)
 
 
 def _new_pairing_state() -> _PairingState:

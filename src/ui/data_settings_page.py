@@ -24,9 +24,13 @@ from src.database import (
 )
 from src.demo_data import seed_sample_applications
 from src.models import APPLICATION_COLUMNS
+from src.ui.capture_pairing import render_capture_pairing
 
 
 def render_data_tools(applications: list[dict]) -> None:
+    with st.expander("Browser Capture pairing"):
+        render_capture_pairing()
+
     st.subheader("Sample Data")
 
     if st.button("Load sample applications"):

@@ -33,7 +33,8 @@ if defined NEEDS_INSTALL (
 
 echo Starting CareerOps Tracker...
 echo Open http://localhost:8501 if the browser does not open automatically.
-"%PYTHON_EXE%" -m streamlit run app.py
+set "CAREEROPS_CAPTURE_ENABLED=1"
+"%PYTHON_EXE%" -m streamlit run app.py --server.address=127.0.0.1 --server.port=8501
 if errorlevel 1 goto error
 
 goto end
