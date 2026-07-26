@@ -28,6 +28,23 @@ def _company_research_indexes(connection: sqlite3.Connection) -> set[str]:
     return {row[1] for row in connection.execute("PRAGMA index_list(company_research_notes)").fetchall()}
 
 
+def _replace_capture_requests_schema(db_path: Path, create_table_sql: str) -> None:
+    init_db(db_path)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("DELETE FROM schema_version WHERE version = 7")
+        connection.execute("DROP TABLE capture_requests")
+        connection.execute(create_table_sql)
+
+
+def _capture_migration_version_count(db_path: Path) -> int:
+    with sqlite3.connect(db_path) as connection:
+        return int(
+            connection.execute(
+                "SELECT COUNT(*) FROM schema_version WHERE version = 7",
+            ).fetchone()[0]
+        )
+
+
 def test_public_create_and_update_still_commit_events(tmp_path: Path) -> None:
     db_path = tmp_path / "applications.db"
     init_db(db_path)
@@ -324,6 +341,140 @@ def test_init_db_applies_capture_migration_idempotently(tmp_path: Path) -> None:
 
     assert table_count == 1
     assert version_count == 1
+
+
+def test_migration_007_does_not_record_version_for_partial_existing_table(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "applications.db"
+    _replace_capture_requests_schema(
+        db_path,
+        """
+        CREATE TABLE capture_requests (
+            client_request_id TEXT PRIMARY KEY,
+            application_id INTEGER NOT NULL,
+            result TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+    )
+
+    for _attempt in range(2):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Migration 007 did not produce the required schema\.$",
+        ) as error:
+            init_db(db_path)
+
+        assert str(db_path) not in str(error.value)
+        assert _capture_migration_version_count(db_path) == 0
+
+    with sqlite3.connect(db_path) as connection:
+        versions = [
+            row[0]
+            for row in connection.execute(
+                "SELECT version FROM schema_version ORDER BY version",
+            ).fetchall()
+        ]
+
+    assert versions == [1, 2, 3, 4, 5, 6]
+
+
+def test_migration_007_rejects_table_without_client_request_primary_key(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "applications.db"
+    _replace_capture_requests_schema(
+        db_path,
+        """
+        CREATE TABLE capture_requests (
+            client_request_id TEXT NOT NULL,
+            payload_sha256 TEXT NOT NULL,
+            application_id INTEGER NOT NULL,
+            result TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"^Migration 007 did not produce the required schema\.$",
+    ):
+        init_db(db_path)
+
+    assert _capture_migration_version_count(db_path) == 0
+
+
+def test_migration_007_rejects_composite_primary_key(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    _replace_capture_requests_schema(
+        db_path,
+        """
+        CREATE TABLE capture_requests (
+            client_request_id TEXT NOT NULL,
+            payload_sha256 TEXT NOT NULL,
+            application_id INTEGER NOT NULL,
+            result TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (client_request_id, payload_sha256)
+        )
+        """,
+    )
+
+    for _attempt in range(2):
+        with pytest.raises(
+            RuntimeError,
+            match=r"^Migration 007 did not produce the required schema\.$",
+        ):
+            init_db(db_path)
+
+        assert _capture_migration_version_count(db_path) == 0
+
+    with sqlite3.connect(db_path) as connection:
+        versions = [
+            row[0]
+            for row in connection.execute(
+                "SELECT version FROM schema_version ORDER BY version",
+            ).fetchall()
+        ]
+
+    assert versions == [1, 2, 3, 4, 5, 6]
+
+
+def test_migration_007_rejects_nullable_required_columns(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    _replace_capture_requests_schema(
+        db_path,
+        """
+        CREATE TABLE capture_requests (
+            client_request_id TEXT PRIMARY KEY,
+            payload_sha256 TEXT,
+            application_id INTEGER NOT NULL,
+            result TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"^Migration 007 did not produce the required schema\.$",
+    ):
+        init_db(db_path)
+
+    assert _capture_migration_version_count(db_path) == 0
+
+
+def test_migration_007_baselines_complete_unrecorded_schema(tmp_path: Path) -> None:
+    db_path = tmp_path / "applications.db"
+    init_db(db_path)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("DELETE FROM schema_version WHERE version = 7")
+
+    init_db(db_path)
+
+    assert _capture_migration_version_count(db_path) == 1
 
 
 def test_init_db_creates_company_research_table_and_indexes(tmp_path: Path) -> None:

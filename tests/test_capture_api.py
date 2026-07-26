@@ -567,7 +567,7 @@ def test_bind_failure_preserves_preexisting_pairing_state(tmp_path: Path) -> Non
     assert get_or_create_pairing_token(pairing_path) == existing_token
 
 
-def test_health_returns_only_public_identity_and_no_store(tmp_path: Path) -> None:
+def test_health_returns_approved_contract(tmp_path: Path) -> None:
     with _running_bridge(tmp_path) as bridge:
         status, headers, body = _request(
             bridge,
@@ -581,9 +581,10 @@ def test_health_returns_only_public_identity_and_no_store(tmp_path: Path) -> Non
 
     assert status == 200
     assert body == {
-        "service": "careerops-capture-bridge",
-        "api_version": "1",
         "status": "ok",
+        "service": "careerops-capture",
+        "api_version": 1,
+        "authentication": "bearer",
     }
     assert headers["Cache-Control"] == "no-store"
     assert headers["Access-Control-Allow-Origin"] == EXTENSION_ORIGIN
@@ -591,6 +592,39 @@ def test_health_returns_only_public_identity_and_no_store(tmp_path: Path) -> Non
     assert bridge.token not in serialized
     assert str(bridge.db_path) not in serialized
     assert str(bridge.pairing_path) not in serialized
+
+
+def test_health_api_version_is_json_number(tmp_path: Path) -> None:
+    with _running_bridge(tmp_path) as bridge:
+        status, _headers, body = _request(
+            bridge,
+            "GET",
+            "/api/v1/health",
+            token=None,
+            api_version=None,
+            content_type=None,
+        )
+
+    assert status == 200
+    assert isinstance(body, dict)
+    assert body["api_version"] == 1
+    assert type(body["api_version"]) is int
+
+
+def test_health_contract_contains_bearer_authentication(tmp_path: Path) -> None:
+    with _running_bridge(tmp_path) as bridge:
+        status, _headers, body = _request(
+            bridge,
+            "GET",
+            "/api/v1/health",
+            token=None,
+            api_version=None,
+            content_type=None,
+        )
+
+    assert status == 200
+    assert isinstance(body, dict)
+    assert body["authentication"] == "bearer"
 
 
 def test_health_does_not_echo_invalid_origin(tmp_path: Path) -> None:
@@ -1920,6 +1954,163 @@ def test_malformed_http_port_owner_returns_conflict(
         capture_api.http.client,
         "HTTPConnection",
         lambda *_args, **_kwargs: MalformedConnection(),
+    )
+
+    assert capture_api._probe_capture_bridge_port() == "port_conflict"
+
+
+def _mock_health_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    payload: dict[str, object],
+) -> None:
+    encoded_payload = json.dumps(payload).encode("utf-8")
+
+    class HealthResponse:
+        status = 200
+
+        def read(self, _limit: int) -> bytes:
+            return encoded_payload
+
+    class HealthConnection:
+        def request(self, _method: str, _path: str) -> None:
+            return
+
+        def getresponse(self) -> HealthResponse:
+            return HealthResponse()
+
+        def close(self) -> None:
+            return
+
+    monkeypatch.setattr(
+        capture_api.http.client,
+        "HTTPConnection",
+        lambda *_args, **_kwargs: HealthConnection(),
+    )
+
+
+def test_external_probe_accepts_exact_approved_health_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_health_probe(
+        monkeypatch,
+        {
+            "status": "ok",
+            "service": "careerops-capture",
+            "api_version": 1,
+            "authentication": "bearer",
+        },
+    )
+
+    assert capture_api._probe_capture_bridge_port() == "external_bridge_detected"
+
+
+def test_external_probe_rejects_legacy_service_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_health_probe(
+        monkeypatch,
+        {
+            "status": "ok",
+            "service": "careerops-capture-bridge",
+            "api_version": 1,
+            "authentication": "bearer",
+        },
+    )
+
+    assert capture_api._probe_capture_bridge_port() == "port_conflict"
+
+
+def test_external_probe_rejects_string_api_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_health_probe(
+        monkeypatch,
+        {
+            "status": "ok",
+            "service": "careerops-capture",
+            "api_version": "1",
+            "authentication": "bearer",
+        },
+    )
+
+    assert capture_api._probe_capture_bridge_port() == "port_conflict"
+
+
+def test_external_probe_rejects_boolean_api_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_health_probe(
+        monkeypatch,
+        {
+            "status": "ok",
+            "service": "careerops-capture",
+            "api_version": True,
+            "authentication": "bearer",
+        },
+    )
+
+    assert capture_api._probe_capture_bridge_port() == "port_conflict"
+
+
+def test_external_probe_rejects_float_api_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_health_probe(
+        monkeypatch,
+        {
+            "status": "ok",
+            "service": "careerops-capture",
+            "api_version": 1.0,
+            "authentication": "bearer",
+        },
+    )
+
+    assert capture_api._probe_capture_bridge_port() == "port_conflict"
+
+
+def test_external_probe_rejects_missing_authentication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_health_probe(
+        monkeypatch,
+        {
+            "status": "ok",
+            "service": "careerops-capture",
+            "api_version": 1,
+        },
+    )
+
+    assert capture_api._probe_capture_bridge_port() == "port_conflict"
+
+
+def test_external_probe_rejects_non_bearer_authentication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_health_probe(
+        monkeypatch,
+        {
+            "status": "ok",
+            "service": "careerops-capture",
+            "api_version": 1,
+            "authentication": "basic",
+        },
+    )
+
+    assert capture_api._probe_capture_bridge_port() == "port_conflict"
+
+
+def test_external_probe_rejects_extra_health_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _mock_health_probe(
+        monkeypatch,
+        {
+            "status": "ok",
+            "service": "careerops-capture",
+            "api_version": 1,
+            "authentication": "bearer",
+            "extra": "unexpected",
+        },
     )
 
     assert capture_api._probe_capture_bridge_port() == "port_conflict"

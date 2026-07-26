@@ -32,7 +32,14 @@ from src.capture_service import (
 from src.database import DEFAULT_DB_PATH
 
 API_VERSION = "1"
-SERVICE_NAME = "careerops-capture-bridge"
+HEALTH_API_VERSION = 1
+SERVICE_NAME = "careerops-capture"
+HEALTH_RESPONSE: dict[str, object] = {
+    "status": "ok",
+    "service": SERVICE_NAME,
+    "api_version": HEALTH_API_VERSION,
+    "authentication": "bearer",
+}
 MAX_REQUEST_BYTES = 256 * 1024
 CAPTURE_BRIDGE_HOST = "127.0.0.1"
 CAPTURE_BRIDGE_PORT = 8765
@@ -324,13 +331,21 @@ def _probe_capture_bridge_port() -> _BridgeProbeResult:
         payload = json.loads(body.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError):
         return "port_conflict"
-    if payload == {
-        "service": SERVICE_NAME,
-        "api_version": API_VERSION,
-        "status": "ok",
-    }:
+    if _is_approved_health_response(payload):
         return "external_bridge_detected"
     return "port_conflict"
+
+
+def _is_approved_health_response(payload: object) -> bool:
+    return (
+        isinstance(payload, dict)
+        and set(payload) == set(HEALTH_RESPONSE)
+        and payload.get("status") == "ok"
+        and payload.get("service") == SERVICE_NAME
+        and type(payload.get("api_version")) is int
+        and payload.get("api_version") == HEALTH_API_VERSION
+        and payload.get("authentication") == "bearer"
+    )
 
 
 def _capture_bridge_port_is_bindable() -> bool:
@@ -646,11 +661,7 @@ class _CaptureRequestHandler(BaseHTTPRequestHandler):
         cors_origin = origin if _is_canonical_extension_origin(origin) else None
         self._send_json(
             200,
-            {
-                "service": SERVICE_NAME,
-                "api_version": API_VERSION,
-                "status": "ok",
-            },
+            HEALTH_RESPONSE,
             cors_origin=cors_origin,
         )
 

@@ -550,6 +550,8 @@ def _apply_migrations(connection: sqlite3.Connection, db_path: Path) -> None:
                 _backup_database_before_migration(connection, db_path, migration.version)
                 backup_created = True
             connection.executescript(migration.path.read_text(encoding="utf-8"))
+            if not _migration_is_satisfied(connection, migration.version):
+                raise RuntimeError(f"Migration {migration.version:03d} did not produce the required schema.")
         _record_migration(connection, migration)
         applied_versions.add(migration.version)
 
@@ -617,6 +619,15 @@ def _migration_is_satisfied(connection: sqlite3.Connection, version: int) -> boo
             )
         )
     if version == 7:
+        if not _table_exists(connection, "capture_requests"):
+            return False
+        columns = {
+            str(row["name"]): {
+                "not_null": bool(row["notnull"]),
+                "primary_key": int(row["pk"]),
+            }
+            for row in connection.execute("PRAGMA table_info(capture_requests)").fetchall()
+        }
         required_columns = {
             "client_request_id",
             "payload_sha256",
@@ -624,8 +635,19 @@ def _migration_is_satisfied(connection: sqlite3.Connection, version: int) -> boo
             "result",
             "created_at",
         }
-        return _table_exists(connection, "capture_requests") and all(
-            _column_exists(connection, "capture_requests", column_name) for column_name in required_columns
+        required_not_null_columns = required_columns - {"client_request_id"}
+        primary_key_columns = [
+            column_name
+            for column_name, metadata in sorted(
+                columns.items(),
+                key=lambda item: item[1]["primary_key"],
+            )
+            if metadata["primary_key"] > 0
+        ]
+        return (
+            required_columns <= columns.keys()
+            and primary_key_columns == ["client_request_id"]
+            and all(columns[column_name]["not_null"] for column_name in required_not_null_columns)
         )
     return False
 
