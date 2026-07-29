@@ -56,20 +56,16 @@
 Add tests that assert:
 
 ```python
-def test_public_create_and_update_still_commit_events(tmp_path: Path) -> None:
-    ...
+def test_public_create_and_update_still_commit_events(tmp_path: Path) -> None: ...
 
 
-def test_transaction_helpers_do_not_commit_caller_transaction(tmp_path: Path) -> None:
-    ...
+def test_transaction_helpers_do_not_commit_caller_transaction(tmp_path: Path) -> None: ...
 
 
-def test_init_db_creates_capture_requests_schema(tmp_path: Path) -> None:
-    ...
+def test_init_db_creates_capture_requests_schema(tmp_path: Path) -> None: ...
 
 
-def test_init_db_applies_capture_migration_idempotently(tmp_path: Path) -> None:
-    ...
+def test_init_db_applies_capture_migration_idempotently(tmp_path: Path) -> None: ...
 ```
 
 The helper test must begin a transaction, call the internal helper, roll back,
@@ -113,8 +109,7 @@ def _create_application_in_transaction(
     connection: sqlite3.Connection,
     payload: dict[str, Any],
     source: str,
-) -> int:
-    ...
+) -> int: ...
 
 
 def _update_application_in_transaction(
@@ -122,8 +117,7 @@ def _update_application_in_transaction(
     application_id: int,
     payload: dict[str, Any],
     source: str,
-) -> None:
-    ...
+) -> None: ...
 ```
 
 The helpers must not open connections and must not call `commit()` or
@@ -308,8 +302,7 @@ class CaptureNotFoundError(Exception):
     code: str
 
 
-class CaptureDatabaseBusyError(Exception):
-    ...
+class CaptureDatabaseBusyError(Exception): ...
 ```
 
 Use `CaptureConflictError` for `duplicate_conflict` and
@@ -580,8 +573,7 @@ def pairing_ui_state(
     *,
     local_run: bool,
     bridge_status: CaptureBridgeStatus,
-) -> dict[str, bool | str]:
-    ...
+) -> dict[str, bool | str]: ...
 ```
 
 Assert hosted/disabled runs cannot reveal or rotate the token, while a local
